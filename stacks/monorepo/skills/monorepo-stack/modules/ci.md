@@ -24,6 +24,13 @@
    this project declined.** The template marks each with a comment naming its
    module. Delete — never comment out, never guard with an `if:`.
 
+   **Delete the template's own header block too**, everything above
+   `name:`. It is addressed to whoever is installing this module, not to
+   the runner, and it survives the copy silently: the workflow still parses,
+   still runs, and Step 2's grep does not see it, because it contains no
+   bracketed placeholder. The result is a repository whose CI file opens by
+   telling its reader to copy it somewhere.
+
 2. **Replace every bracketed placeholder** in the copied file, including the
    health route the readiness loop polls. Run
    `grep -n '<[^>]*>' .github/workflows/test.yml` and treat the output as
@@ -158,14 +165,27 @@ all — say so in its `CLAUDE.md` rather than leaving the gap silent.
    not appear and its absence is not an error anywhere.
 2. `grep -n '<[^>]*>' .github/workflows/test.yml` prints nothing.
 3. The proof script parses under the runner's shell, not yours:
-   `dash -n scripts/<name>.sh` (or `sh -n` where `/bin/sh` is dash) — and know
-   what that does not prove. `-n` parses without executing, so it catches a
-   bashism like process substitution and does **not** catch an invalid
-   `set -o` option: `set -o pipefail` is a syntactically valid simple command
-   whether or not `pipefail` exists as a dash option, so a parse-only check
-   passes it either way. Close that gap directly, without executing the rest
-   of the script: `grep -oE 'set -o [a-z]+' scripts/<name>.sh | while read -r
+   `dash -n scripts/<name>.sh` — and know what that does not prove. `-n`
+   parses without executing, so it catches a bashism like process
+   substitution and does **not** catch an invalid `set -o` option:
+   `set -o pipefail` is a syntactically valid simple command whether or not
+   `pipefail` exists as a dash option, so a parse-only check passes it
+   either way. Close that gap directly, without executing the rest of the
+   script, and **anchor the search to a command position**:
+   `grep -oE '^[[:space:]]*set -o [a-z]+' scripts/<name>.sh | while read -r
    c; do dash -c "$c" || echo "invalid: $c"; done` prints nothing.
+   Unanchored, the same grep matches the option named inside a comment —
+   a script whose header documents the bashism it avoids fails its own
+   check, which is the one script most likely to be correct.
+
+   Both halves need a real `dash`, and most development machines do not
+   have one: `/bin/sh` is a symlink to `bash` on the common Linux desktops
+   and on macOS, where `sh -n` accepts every bashism this check exists to
+   find and a missing `dash` makes the second half print `invalid:` for a
+   line that is fine. Run them in the runner's own base image rather than
+   skipping them — `docker run --rm -v "$PWD/scripts:/s:ro" <the runner's
+   base image> dash -n /s/<name>.sh` — and if you cannot, say the check did
+   not run instead of recording it as passed.
 4. From a **fresh clone into an empty directory**, `pnpm install
    --frozen-lockfile && pnpm -w exec turbo run build typecheck test` exits
    `0`. This is the clean-checkout trap checked rather than trusted, and it
