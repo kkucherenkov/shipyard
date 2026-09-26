@@ -293,8 +293,9 @@ before writing a command into prose.
 
 ## Declining this module
 
-A project with no wire contract declines it. Two other modules name it in
-`Requires`, and declining it decides them:
+A project with no wire contract declines it. Three other modules name it in
+`Requires`, or ship a file conditioned on it, and declining it decides all
+three:
 
 - **`cli` is declined with it, in full.** Its whole cheapness comes from
   consuming the generated client; a CLI written against a hand-maintained
@@ -310,6 +311,9 @@ A project with no wire contract declines it. Two other modules name it in
   together, not one or the other — name both, by name, in the project's
   `CLAUDE.md`, because a reader who finds no validator mounted will
   otherwise assume it was forgotten rather than declined on purpose.
+- **`ci` loses the `contract` job, in full.** `templates/workflows/test.yml`
+  marks that job specs-conditional; with no wire contract there is nothing
+  for it to lint, and no other job in the template depends on it.
 
 Nothing in this module emits a file into another module's directory, and it
 generates no client the project did not ask for. That is what makes both
