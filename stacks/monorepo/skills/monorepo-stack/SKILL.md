@@ -111,7 +111,7 @@ running for months.
 
 ## Templates
 
-Three files travel as templates rather than as instructions, because their
+Four files travel as templates rather than as instructions, because their
 correctness does not expire with a major version.
 
 | Template | Written to | When |
@@ -119,14 +119,21 @@ correctness does not expire with a major version.
 | [`claude-md-block.md`](../../templates/claude-md-block.md) | between `<!-- STACK:BEGIN -->` and `<!-- STACK:END -->` in the project's `CLAUDE.md` | after every module install, rewriting only that region |
 | [`docs/handbook.md`](../../templates/docs/handbook.md) | `docs/handbook.md` (or wherever the project keeps convention docs) | once, with `backend` |
 | [`docs/testing.md`](../../templates/docs/testing.md) | `docs/testing.md` | once, with the first module that adds tests |
+| [`workflows/test.yml`](../../templates/workflows/test.yml) | `.github/workflows/test.yml` | once, with `ci` |
 
 Two more — a design-system document and an i18n document — belong to modules
 this plugin does not yet have, and are absent rather than shipped empty.
 
 Delete from each template every section whose module the project declined, and
-replace every `<PLACEHOLDER>`. `grep -noE '<[A-Z][^>]*>' <file>` printing
-nothing is the check — the narrower `<[A-Z_ ]*>` misses a placeholder that
-contains a comma, an apostrophe or a hyphen (`claude-md-block.md` ships four
-of the first two and one of the third), and a grep that only proves the
-letters-only placeholders were replaced is a check that passes over a
-`CLAUDE.md` still carrying the rest.
+replace every `<PLACEHOLDER>`. For the first three, `grep -noE '<[A-Z][^>]*>'
+<file>` printing nothing is the check — the narrower `<[A-Z_ ]*>` misses a
+placeholder that contains a comma, an apostrophe or a hyphen
+(`claude-md-block.md` ships four of the first two and one of the third), and a
+grep that only proves the letters-only placeholders were replaced is a check
+that passes over a `CLAUDE.md` still carrying the rest. That anchor does not
+carry over to `workflows/test.yml`: most of its placeholders start lowercase
+(`<the major from engines.node>`, `<health path>`), so `ci.md:166` prescribes
+`grep -n '<[^>]*>' .github/workflows/test.yml` for that file instead — and
+only that file, since the unanchored form matches the literal
+`<!-- STACK:BEGIN -->` / `<!-- STACK:END -->` markers `claude-md-block.md`
+ships on purpose.
