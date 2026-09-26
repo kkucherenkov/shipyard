@@ -159,10 +159,23 @@ for skill_dir in "$stack_root"/*/skills/*/; do
   # phrase — rather than widening that script's own glob, which would also
   # drag its forbidden-technology-noun rule onto a file whose entire job is
   # naming the technologies a recipe installs.
+  #
+  # Extracted from the frontmatter block only (the first line through the
+  # next "---"), not the whole file the way layer 1's check-skills.sh does
+  # it. That shortcut is a deferred Minor there, where the file is prose
+  # about process; here a module file's own examples are expected to contain
+  # a body line reading "name: <module-name>" or "description: ...", and a
+  # skill with no name: in its frontmatter at all must not pass because one
+  # of its examples happens to start with the same word.
   if [ -f "$skill_file" ]; then
-    name_val=$(sed -n 's/^name: *//p' "$skill_file" | head -1)
+    frontmatter=$(awk '
+      NR == 1 && /^---$/ { infm = 1; next }
+      infm && /^---$/ { exit }
+      infm { print }
+    ' "$skill_file")
+    name_val=$(printf '%s\n' "$frontmatter" | sed -n 's/^name: *//p' | head -1)
     [ -n "$name_val" ] || fail "$skill_file" 'frontmatter is missing a non-empty name:'
-    desc_val=$(sed -n 's/^description: *//p' "$skill_file" | head -1)
+    desc_val=$(printf '%s\n' "$frontmatter" | sed -n 's/^description: *//p' | head -1)
     printf '%s' "$desc_val" | grep -qiE 'use (when|before|after|while)' \
       || fail "$skill_file" 'description does not name a triggering task (needs "use when/before/after")'
   fi
