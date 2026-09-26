@@ -52,6 +52,50 @@ expect 1 'rejects the consumer package scope' '' 'Import from @todoer/specs.'
 expect 1 'rejects a card id' '' 'Tracked as E15-F03 on the board.'
 expect 0 'allows a technology noun' '' 'Install NestJS and Prisma under apps/backend.'
 
+# R2 exempts .claude-plugin/*.json from the version-pin rule (D13 requires
+# plugin.json to carry "version", and that is not an install specifier), but
+# R1 must still see it — the manifest's description/keywords are the
+# marketplace's user-facing copy, the first thing a stranger reads. A rule
+# that skips the file an identity noun actually appears in is exactly how
+# layer 1 shipped one (packages/ui) undetected.
+root=$(mktemp -d)
+make_stack "$root" '' ''
+mkdir -p "$root/stacks/monorepo/.claude-plugin"
+cat > "$root/stacks/monorepo/.claude-plugin/plugin.json" <<'JSON'
+{
+  "name": "monorepo-stack",
+  "description": "As todoer does it.",
+  "version": "0.1.0"
+}
+JSON
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s an identity noun inside the plugin manifest fails\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
+# The same manifest, clean of identity nouns, still carries its own
+# "version": "0.1.0" — confirms R2's exemption holds without R1 objecting.
+root=$(mktemp -d)
+make_stack "$root" '' ''
+mkdir -p "$root/stacks/monorepo/.claude-plugin"
+cat > "$root/stacks/monorepo/.claude-plugin/plugin.json" <<'JSON'
+{
+  "name": "monorepo-stack",
+  "description": "A monorepo stack plugin.",
+  "version": "0.1.0"
+}
+JSON
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 0 ]; then
+  printf 'FAIL want=0 got=%s a clean manifest keeps its own version field\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
 # --- R2: pinned versions ---
 expect 1 'rejects a pinned dependency specifier' '' 'Run pnpm add prisma@6.19.3 here.'
 expect 1 'rejects a pinned image tag' '' '    image: postgres:18.1-alpine'
