@@ -124,5 +124,9 @@ Two more — a design-system document and an i18n document — belong to modules
 this plugin does not yet have, and are absent rather than shipped empty.
 
 Delete from each template every section whose module the project declined, and
-replace every `<PLACEHOLDER>`. `grep -n '<[A-Z_ ]*>' <file>` printing nothing is
-the check.
+replace every `<PLACEHOLDER>`. `grep -noE '<[A-Z][^>]*>' <file>` printing
+nothing is the check — the narrower `<[A-Z_ ]*>` misses a placeholder that
+contains a comma, an apostrophe or a hyphen (`claude-md-block.md` ships four
+of the first two and one of the third), and a grep that only proves the
+letters-only placeholders were replaced is a check that passes over a
+`CLAUDE.md` still carrying the rest.
