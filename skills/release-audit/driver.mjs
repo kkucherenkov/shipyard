@@ -307,10 +307,16 @@ async function main() {
     // Force the states the data never produces. Without this, an error screen
     // is audited only if something happens to be broken that day.
     const auth = await tokenFor('admin');
+    // Every case forces a response shape, not a particular route, so the
+    // declared CORE list — the same one `sweep` reads from `## Audit routes`
+    // — is enough; no case needs a route of its own. A literal route here
+    // (worse, one with a literal id) is Important 1's bug again: a stale or
+    // product-specific path turns the forced state into a test of the
+    // target's 404 page instead of the state under test.
     const CASES = [
       {
         name: 'server-error',
-        paths: ['/', '/browse', '/courses/IUJgcSn2VoE9cPFTG63Lw'],
+        paths: CORE,
         route: (r) =>
           r.fulfill({
             status: 500,
@@ -324,7 +330,7 @@ async function main() {
       },
       {
         name: 'empty-payload',
-        paths: ['/', '/browse', '/search?q=zzz'],
+        paths: CORE,
         route: (r) =>
           r.fulfill({
             status: 200,
@@ -334,7 +340,7 @@ async function main() {
       },
       {
         name: 'slow',
-        paths: ['/', '/browse'],
+        paths: CORE,
         route: async (r) => {
           await new Promise((res) => setTimeout(res, 6000));
           await r.continue();
