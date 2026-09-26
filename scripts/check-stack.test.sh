@@ -11,18 +11,26 @@ here=$(dirname "$0")
 subject="$here/check-stack.sh"
 failures=0
 
+# Long enough to clear R3's length floor under "## Declining this module"
+# without naming a real module — used by fixtures that are not testing that
+# floor themselves (the dedicated cases near the bottom of this file are).
+decline_filler='Filler long enough to clear the same length floor a real decline section has to clear: this fixture is not testing that floor, so nothing here names an actual module, but the paragraph itself has to be substantial to get past R3 regardless.'
+
 # Build a one-module stack tree in $1. $2 is the SKILL.md body, $3 the body of
 # modules/sample.md. Frontmatter is fixed and valid so a case only ever
 # exercises the rule it names.
 #
-# sample.md gets whichever of R3's six required headings $3 does not already
-# declare, appended as inert filler, and SKILL.md gets a table row naming it.
-# Every R1/R2/R5/R6/R7 case below drops its tested snippet into this same
-# modules/sample.md, and R3/R4 (added by Task 2) both scan modules/ regardless
-# of which case put a file there — with no filler and no matching row, adding
-# R3/R4 would fail all of them on something they were never testing. Only the
-# R5 traps cases declare "## Traps" themselves; the loop skips a heading
-# module_body already has so that one is not duplicated.
+# sample.md always carries all six headings in canonical order, with an inert
+# but full-length filler under "## Declining this module" (R3 now floors that
+# section's length, same as R5 floors a Traps paragraph), and SKILL.md gets a
+# table row naming it. Every R1/R2/R5/R6/R7 case below drops its tested
+# snippet into this same modules/sample.md, and R3/R4 (added by Task 2) both
+# scan modules/ regardless of which case put a file there — with no filler,
+# no matching row, and no ordering, adding R3/R4 would fail all of them on
+# something they were never testing. Only the R5 traps cases declare their
+# own "## Traps" section; when module_body does, it is slotted in at the
+# right point in canonical order rather than prepended, or the six headings
+# would come out of order and R3's new order check would fire instead of R5.
 make_stack() {
   root=$1
   skill_body=$2
@@ -39,12 +47,21 @@ make_stack() {
     printf '%s\n' "$skill_body"
   } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
   {
-    printf '# sample\n\n%s\n\n' "$module_body"
-    for heading in '## Preconditions' '## Steps' '## What the consumer decides' \
-      '## Traps' '## Declining this module' '## Verify'; do
-      printf '%s\n' "$module_body" | grep -qxF "$heading" && continue
-      printf '%s\n\nFiller.\n\n' "$heading"
-    done
+    printf '# sample\n\n'
+    if printf '%s\n' "$module_body" | grep -qxF '## Traps'; then
+      traps_block=$module_body
+    else
+      printf '%s\n\n' "$module_body"
+      traps_block='## Traps
+
+Filler.'
+    fi
+    printf '## Preconditions\n\nFiller.\n\n'
+    printf '## Steps\n\nFiller.\n\n'
+    printf '## What the consumer decides\n\nFiller.\n\n'
+    printf '%s\n\n' "$traps_block"
+    printf '## Declining this module\n\n%s\n\n' "$decline_filler"
+    printf '## Verify\n\nFiller.\n'
   } > "$root/stacks/monorepo/skills/monorepo-stack/modules/sample.md"
 }
 
@@ -67,7 +84,7 @@ make_graph() {
     {
       printf '# %s\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n' "$m"
       printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
-      printf '## Declining this module\n\nNothing reaches into it.\n\n'
+      printf '## Declining this module\n\n%s\n\n' "$decline_filler"
       printf '## Verify\n\nIt exists.\n'
     } > "$root/stacks/monorepo/skills/monorepo-stack/modules/$m.md"
   done
@@ -85,6 +102,37 @@ expect_graph() {
   msg=$3
   root=$(mktemp -d)
   make_graph "$root" "$4" "$5"
+  out=$(sh "$subject" "$root" 2>&1 >/dev/null)
+  got=$?
+  rm -rf "$root"
+  if [ "$got" -ne "$want" ]; then
+    printf 'FAIL want=%s got=%s %s\n' "$want" "$got" "$label" >&2
+    failures=$((failures + 1))
+    return
+  fi
+  if [ -n "$msg" ]; then
+    case $out in
+      *"$msg"*) ;;
+      *)
+        printf 'FAIL %s: exit code matched but message did not contain "%s": %s\n' \
+          "$label" "$msg" "$out" >&2
+        failures=$((failures + 1))
+        ;;
+    esac
+  fi
+}
+
+# want=$1, label=$2, msg=$3, same contract as expect_graph() above — but the
+# caller builds an arbitrary fixture tree at $root beforehand instead of going
+# through make_stack/make_graph, for cases neither of those can express (a
+# malformed frontmatter, a specific heading order). Exists so every ad hoc
+# case gets the same want/got-then-message short-circuit as expect_graph:
+# without the `return` on a want/got mismatch, one broken fixture reports as
+# two failures instead of one.
+expect_root() {
+  want=$1
+  label=$2
+  msg=$3
   out=$(sh "$subject" "$root" 2>&1 >/dev/null)
   got=$?
   rm -rf "$root"
@@ -313,36 +361,101 @@ expect_graph 1 'table names a module with no file' 'tabled only: docker' \
   'core docker' 'core'
 expect_graph 1 'directory holds a module the table omits' 'present only: docker' \
   'core' 'core docker'
+expect_graph 0 'accepts a module name with digits' '' 'web2' 'web2'
 
-# --- R3: every module file carries the six headings ---
-missing_decline=$(mktemp -d)
-mkdir -p "$missing_decline/stacks/monorepo/skills/monorepo-stack/modules"
+# --- R3: every module file carries the six headings, in order ---
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
 {
   printf -- '---\nname: monorepo-stack\n'
   printf 'description: Use when scaffolding a monorepo or adding a module.\n'
   printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
   printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
   printf '| [`core`](modules/core.md) | a workspace | nothing |\n'
-} > "$missing_decline/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
 {
   printf '# core\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n'
   printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
   printf '## Verify\n\nIt exists.\n'
-} > "$missing_decline/stacks/monorepo/skills/monorepo-stack/modules/core.md"
-out=$(sh "$subject" "$missing_decline" 2>&1 >/dev/null)
-got=$?
-rm -rf "$missing_decline"
-if [ "$got" -ne 1 ]; then
-  printf 'FAIL want=1 got=%s a module file with no "## Declining this module"\n' "$got" >&2
-  failures=$((failures + 1))
-fi
-case $out in
-  *'missing required heading: ## Declining this module'*) ;;
-  *)
-    printf 'FAIL a module file with no "## Declining this module": message did not name the reason: %s\n' "$out" >&2
-    failures=$((failures + 1))
-    ;;
-esac
+} > "$root/stacks/monorepo/skills/monorepo-stack/modules/core.md"
+expect_root 1 'a module file with no "## Declining this module"' \
+  'missing required heading: ## Declining this module'
+
+# --- R3: the six headings must appear in that order ---
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md) | a workspace | nothing |\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+{
+  # Traps swapped ahead of Preconditions: every heading is present, none is
+  # too short, but the order is wrong.
+  printf '# core\n\n## Traps\n\nNone yet.\n\n## Preconditions\n\nNone.\n\n'
+  printf '## Steps\n\n1. Do it.\n\n## What the consumer decides\n\nNames.\n\n'
+  printf '## Declining this module\n\n%s\n\n## Verify\n\nIt exists.\n' "$decline_filler"
+} > "$root/stacks/monorepo/skills/monorepo-stack/modules/core.md"
+expect_root 1 'headings present but out of order' 'out of order'
+
+# --- R3: "## Declining this module" must say enough to be useful ---
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md) | a workspace | nothing |\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+{
+  printf '# core\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n'
+  printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+  printf '## Declining this module\n\n## Verify\n\nIt exists.\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/modules/core.md"
+expect_root 1 'an empty decline section' \
+  '## Declining this module says too little'
+
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md) | a workspace | nothing |\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+{
+  printf '# core\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n'
+  printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+  printf '## Declining this module\n\nJust don'"'"'t install it.\n\n'
+  printf '## Verify\n\nIt exists.\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/modules/core.md"
+expect_root 1 'a one-line decline section' \
+  '## Declining this module says too little'
+
+# --- R8: the stack skill's own frontmatter (checked by nothing else) ---
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
+{
+  printf -- '---\nname:\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+expect_root 1 'a stack skill with no name in frontmatter' \
+  'frontmatter is missing a non-empty name'
+
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Scaffolds a monorepo and adds modules to one.\n'
+  printf -- '---\n\n# Monorepo stack\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+expect_root 1 'a stack skill description with no trigger phrase' \
+  'does not name a triggering task'
 
 if [ "$failures" -gt 0 ]; then
   printf '%s failing case(s)\n' "$failures" >&2
