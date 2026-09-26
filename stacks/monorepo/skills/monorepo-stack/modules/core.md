@@ -36,8 +36,19 @@ module that cannot be declined.
    ```
 
    Install the dev dependencies by name and let the package manager resolve
-   them — `pnpm add -Dw typescript eslint @eslint/js typescript-eslint prettier
-   turbo`. Do not write versions into this file by hand.
+   them — `pnpm add -Dw typescript @types/node eslint @eslint/js
+   typescript-eslint prettier turbo`. Do not write versions into this file by
+   hand. **Run that command after Step 2, not here**: `-Dw` means "the root of
+   a workspace", and pnpm refuses it — `--workspace-root may only be used
+   inside a workspace`, exit 1 — until the workspace file Step 2 writes
+   exists. `@types/node` is on the list because every package in this recipe
+   compiles against the runtime's own library and nothing else pulls it in;
+   without it a package importing anything under `node:` fails its build with
+   `TS2688: Cannot find type definition file for 'node'`.
+
+   Then read what the resolver picked, before going further: install
+   TypeScript at the major the type-aware lint plugin's peer range accepts,
+   and let the resolver pick every patch. The trap below is why.
 
 2. **Declare two workspace globs, not one**, in `pnpm-workspace.yaml`:
 
@@ -60,7 +71,10 @@ module that cannot be declined.
      "tasks": {
        "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
        "typecheck": { "dependsOn": ["^build"] },
-       "test": { "dependsOn": ["^build"] },
+       "test": {
+         "dependsOn": ["^build"],
+         "env": ["<every variable this project's tests read>"]
+       },
        "lint": {
          "dependsOn": ["^build"],
          "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/eslint.config.mjs"]
@@ -98,9 +112,15 @@ module that cannot be declined.
    }
    ```
 
-5. **Give every package two tsconfigs, not one.** `tsconfig.json` includes
-   everything — sources, specs, and the package's own root-level config files —
-   with `noEmit: true`. `tsconfig.build.json` extends it, sets `noEmit: false`
+5. **Give every package two tsconfigs, not one, and declare `include` in
+   both.** `tsconfig.json` includes everything — sources, specs, and the
+   package's own root-level config files, which is `"include": ["src", "*.ts"]`
+   — with `noEmit: true`. Declare it rather than leaving it off: a
+   `tsconfig.json` with no `include` defaults to every file under the package,
+   and the default `exclude` drops `outDir` only when `outDir` is set in *that*
+   file, which here it is not. So `typecheck` reads the package's own build
+   output — seven `.d.ts` files out of `dist/`, measured on a tree built from
+   these instructions — and quietly starts depending on whether `build` ran. `tsconfig.build.json` extends it, sets `noEmit: false`
    with `rootDir: "src"` and an `outDir`, and **re-declares `include` as
    `["src"]`** rather than inheriting the base file's. `extends` inherits
    `include` along with everything else, so a root-level file such as
@@ -117,20 +137,46 @@ module that cannot be declined.
    config files that sit outside every tsconfig get syntax rules rather than
    an error.
 
+   Set `@typescript-eslint/no-unused-vars` to `{ ignoreRestSiblings: true }`
+   in the same file, with the reason beside it. A rest-spread omission —
+   `const { seq: _seq, ...rest } = row` — is how a field is dropped from an
+   object, and `backend`'s rule about guarding protocol-owned columns by an
+   explicit list produces exactly that shape. Without the option the default
+   rule set reports the named-and-discarded binding as unused, and the next
+   reader's fix is to stop writing the omission.
+
 7. **Configure Prettier, and keep it away from Markdown.** `.prettierrc.json`
-   carrying the two settings this recipe fixes rather than leaves open:
+   carrying the one setting this recipe fixes rather than leaves open, and
+   the override that setting forces:
 
    ```json
    {
      "singleQuote": true,
-     "printWidth": 80
+     "overrides": [
+       { "files": "*.{yml,yaml}", "options": { "singleQuote": false } }
+     ]
    }
    ```
+
+   The override is not taste. `singleQuote` applies to YAML too, and the
+   workspace file Step 2 writes, the compose file `docker` writes and the
+   workflow `ci` copies are all YAML with double-quoted scalars — so without
+   it a tree built exactly from these instructions fails this module's own
+   Verify item 3 on its first run, on `pnpm-workspace.yaml`, before a line of
+   project code exists.
 
    Alongside it, a `.prettierignore` covering the lockfile, every generated
    directory, and `*.md`.
 
-8. **Create `.git-blame-ignore-revs`** at the root with a comment naming
+8. **Write the root `.gitignore`.** Nothing else in this recipe creates one
+   and everything in it assumes one: `node_modules/`, every package's `dist/`,
+   the task runner's own cache directory, `*.tsbuildinfo`, and `.env`. Without
+   it `git status` is unreadable from the first install onward, and every
+   later check that greps the tree — `specs`' committed-generated-source
+   check, an audit that a declined module left nothing behind — reads a few
+   hundred megabytes of dependencies before reaching a file anybody wrote.
+
+9. **Create `.git-blame-ignore-revs`** at the root with a comment naming
    `git config blame.ignoreRevsFile .git-blame-ignore-revs`, and add the SHA of
    the first formatting-only commit to it once that commit exists.
 
@@ -166,6 +212,20 @@ linting a package that imports a workspace library needs that library's built
 output to exist. Without the dependency, lint passes on any machine with a warm
 build and fails on CI — which is the worst available ordering of those two
 outcomes, because the failure arrives after review rather than before it.
+
+**Installing by name is this recipe's design, and its price is that a new
+TypeScript major arrives before the tools that read the compiler API.** Both
+failures land in the same install and neither is loud. The type-aware lint
+plugin declares an honest peer range, so the package manager prints one
+unmet-peer line per transitive package and the install still exits `0` — a
+warning nobody reads at the bottom of forty lines of progress. An OpenAPI
+generator declared a range that *accepted* the new major, so there was no
+warning at all: it crashed at the first call with `Cannot read properties of
+undefined (reading 'AnyKeyword')`, a stack trace inside the tool with nothing
+pointing at the compiler version underneath it. Both cleared the moment
+TypeScript was installed at the lint plugin's declared ceiling. Read the peer
+ranges after the first install and pick the major from the strictest one, or
+the first person to run a generator debugs somebody else's dependency tree.
 
 **Prettier turned loose on the whole tree rewrites prose whose line breaks were
 chosen.** It reflowed seventeen architecture decision records here — documents
@@ -218,3 +278,9 @@ Each of these has an answer that cannot be produced by accident:
    is greater than `0` once specs exist, and the same command against
    `tsconfig.build.json` prints `0`. This is the two-tsconfig split proved
    rather than assumed.
+5. In any package, **after** a build has run,
+   `pnpm exec tsc -p tsconfig.json --listFiles | grep -c '/dist/'` prints `0`.
+   Run it after a build, never before: on an unbuilt package it prints `0`
+   whether or not `include` is declared, which is the accident this check
+   exists to rule out. On a package whose `tsconfig.json` has no `include`,
+   the same command printed `7` here.
