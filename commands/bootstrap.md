@@ -30,19 +30,19 @@ deleted on purpose, a rewritten `## Never do` list.
 4. Which of the optional contract sections apply: deploy targets, issue
    mirroring, and audit personas/routes. One yes/no per section, asked
    together, not as three separate questions — and a yes to any of them
-   continues into gathering the specifics step 6 needs; it does not close
+   continues into gathering the specifics step 7 needs; it does not close
    the topic on its own.
 
 Each of the four is pursued to whatever depth its own answer needs — a "yes"
 in question 4 is that question opening, not that question finished, so the
 host, container names and health endpoint `## Deploy targets` needs are
-question 4 continued, not a fifth question. The license holder in step 7 is
+question 4 continued, not a fifth question. The license holder in step 8 is
 the same idea applied to question 1: it defaults to `git config user.name`
 and is only asked for when that is empty, as project identity continued, not
 a new topic. What this command must not do is introduce a topic the four
 above don't cover — a testing framework, a naming convention, a release
 schedule. Two things it does not ask about at all: today's date and the task
-id in step 9, both derived without asking anyone.
+id in step 10, both derived without asking anyone.
 
 ## 3. Delete `scripts/smoke-test.sh`, before touching placeholders
 
@@ -58,7 +58,23 @@ manual bootstrap checklist the same way, for the same reason: this file
 exists to test the template, not this project, and it starts failing against
 this project the moment the project's placeholders are its own.
 
-## 4. Replace every placeholder
+## 4. Delete `project-skeleton`'s own README preamble
+
+`README.md` opens with a note block: "This is `project-skeleton`'s own
+README. If you created this repository from the template, delete everything
+above the horizontal rule below." Do that deletion now — everything from the
+top of the file through the `---` line, inclusive — before the next step
+fills `<PROJECT>` and `<SUMMARY>` in below it. Nothing else in this command
+removes that note, and nothing in the note's own checklist does either: its
+three items are the smoke test (step 3, already done), the placeholder grep
+(next step), and the license (step 8) — deleting the note that introduces
+them is the one item the checklist names before all three, and it is the one
+this command must do itself rather than leave to the reader. Skipped, a real
+clone ends up with the template's own README glued on top of the project's,
+and nothing downstream — not this command, not the commit instructions in
+this plugin's own `README.md` — ever removes it.
+
+## 5. Replace every placeholder
 
 Run `grep -rn '<[A-Z_]\+>' . --exclude-dir=.git` and replace every hit it
 reports — treat the grep as the source of truth for what needs filling, not
@@ -79,7 +95,7 @@ matching on its own account. If it does not come back empty, stop and look
 again rather than reporting success: a placeholder that survives is a section
 someone will silently ship unfilled.
 
-## 5. Settle the stack
+## 6. Settle the stack
 
 If question 3 named a stack plugin, install it and let its own setup fill the
 block between `<!-- STACK:BEGIN -->` and `<!-- STACK:END -->` in `CLAUDE.md` —
@@ -90,7 +106,7 @@ is a project that has not picked a stack yet, which is a legitimate, complete
 state — unlike the optional sections in the next step, nothing reads this
 block on its own, so there is nothing for an empty block to be mistaken for.
 
-## 6. Settle the four optional contract sections — delete, never empty
+## 7. Settle the four optional contract sections — delete, never empty
 
 The headings are `## Deploy targets` (read by `deploy-verify`), `## Issue
 mirroring` (read by `issue-bookkeeping`), and `## Audit personas` with
@@ -135,13 +151,13 @@ actually is, and do not guess no to finish the interview faster. A section
 answered yes that nothing has actually configured is worse than an absent
 one, because it invites a skill to trust data that is not really there.
 
-## 7. Replace the license
+## 8. Replace the license
 
 Replace the copyright line in `LICENSE` with this project's owner — default to
 `git config user.name`, and ask only if that comes back empty, per step 2.
 The rest of the file, including its MIT terms, does not change.
 
-## 8. Write the first ADR
+## 9. Write the first ADR
 
 Add `docs/adr/0002-<slug>.md` in the same shape as
 `docs/adr/0001-record-architecture-decisions.md` — Status, Date, Context,
@@ -154,11 +170,11 @@ a different decision to fill this file — the project has not made one yet,
 and writing a made-up rationale for something nobody decided is worse than a
 short, honest ADR about the one real decision on the table.
 
-## 9. Open the first task entry
+## 10. Open the first task entry
 
 Create `specs/tasks/active/T-<today>-bootstrap-project.md` from
 `specs/tasks/templates/feature.md`. Goal: turning this clone of
 `project-skeleton` into this project's own contract. Sub-steps: mirror steps
-3-8 above. Leave `Status: in-progress` — do not move it to `done/` here, since
+3-9 above. Leave `Status: in-progress` — do not move it to `done/` here, since
 that step also records a pull request link, and this command does not open
 one; leave the move to whoever lands this work.
