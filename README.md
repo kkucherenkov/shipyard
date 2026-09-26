@@ -51,6 +51,18 @@ To pick up a later fix to any skill:
 /plugin update shipyard
 ```
 
+This repository is also the marketplace for `shipyard-monorepo`, the stack
+layer — the monorepo shape this process was extracted alongside. It installs
+separately and is worth installing only if that is the kind of repository you
+are building:
+
+```sh
+/plugin install shipyard-monorepo
+```
+
+See [`stacks/monorepo/README.md`](stacks/monorepo/README.md) for its modules
+and what each one costs to decline.
+
 ## Skills, and when each one fires
 
 A skill's `description` is what Claude reads to decide whether to load it —

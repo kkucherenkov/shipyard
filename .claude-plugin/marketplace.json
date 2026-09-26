@@ -1,6 +1,6 @@
 {
   "name": "shipyard",
-  "description": "Portable process layer for new projects, plus stack presets.",
+  "description": "Portable process layer for new projects, and the monorepo stack that fills it in.",
   "owner": {
     "name": "Kirill Kucherenkov",
     "url": "https://github.com/kkucherenkov"
@@ -11,6 +11,12 @@
       "description": "Process discipline: task stack, lane discipline, CI gating, issue bookkeeping, deploy verification, release audit.",
       "source": "./",
       "category": "productivity"
+    },
+    {
+      "name": "shipyard-monorepo",
+      "description": "A monorepo stack as installable modules: workspace and build graph, local services, an API contract with a generated client, a server, a CLI, and CI gates matched to what the project took.",
+      "source": "./stacks/monorepo",
+      "category": "development"
     }
   ]
 }

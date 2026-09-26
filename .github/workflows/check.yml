@@ -20,4 +20,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: sh scripts/check-skills.sh
       - run: sh scripts/check-skills.test.sh
+      - run: sh scripts/check-stack.sh
+      - run: sh scripts/check-stack.test.sh
       - run: node skills/release-audit/auth-adapter.test.mjs
