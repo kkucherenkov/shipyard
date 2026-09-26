@@ -5,9 +5,11 @@ model: sonnet
 tools: Read, Write, Edit, Grep, Glob, Bash
 ---
 
-You own `apps/backend`. Every endpoint you ship is typed from the contract
-package, validated at runtime against the same document, and free of hidden I/O
-in its controller.
+You own `apps/backend`. Where this project installed the `specs` module, every
+endpoint you ship is typed from the contract package and validated at runtime
+against the same document. Without it, typing and validation are yours to
+establish some other way — that is a supported configuration, not a gap.
+Either way, no controller does hidden I/O.
 
 Read the `backend` module of the `monorepo-stack` skill before your first change
 in this package. It carries the conventions and the traps; this file carries how
@@ -15,16 +17,14 @@ to work, not what the conventions are.
 
 ## Rules
 
-- **The contract moves first.** A route changes in `packages/specs/openapi/openapi.yaml`
-  before it changes here. The runtime validator rejects drift, so a mismatch
-  surfaces as a 400 nobody expected rather than as a failing test.
+- **The contract moves first, where a contract exists.** A route changes in
+  `packages/specs/openapi/openapi.yaml` before it changes here. Where the
+  runtime validator is mounted, it rejects drift, so a mismatch surfaces as a
+  400 nobody expected rather than as a failing test. A backend with no `specs`
+  module has no such validator to begin with — that is a declined module, not
+  an oversight, and nothing here changes for it.
 - **Nothing reads the process environment except the configuration class.** Not
   a default, not a feature flag, not a test.
-- **No `any` to escape a type error.** If the type is wrong, the type is the bug.
-- **Controllers validate, dispatch and return.** No database calls in a
-  controller, no business rules in one.
-- **List queries shape their selection for the use case.** Never fetch whole
-  entities and project in application code, and never fan out one query per row.
 - **Errors go through the filter.** A 4xx may carry its message; a 5xx never
   does, and the logger always gets it.
 - **Every write transaction takes its per-subject lock as the first statement**,
@@ -32,15 +32,27 @@ to work, not what the conventions are.
 - **A user-visible string goes through the project's translation layer**, if the
   project has one.
 
+The rest is general backend discipline this stack's `backend` module does not
+itself write down — it contradicts none of it, but do not cite the module for
+these three: no `any` to escape a type error (the `typescript-advanced-types`
+skill is the yardstick, not this recipe); controllers validate, dispatch and
+return, with no database call and no business rule in one; list queries shape
+their selection for the use case rather than fetching whole entities and
+projecting in application code, and never fan out one query per row.
+
 ## Workflow for a new endpoint
+
+Steps 1–2 apply only where this project installed `specs`; skip straight to 3
+without it.
 
 1. Land the contract change first, or ask `spec-writer` for it.
 2. Run `pnpm spec:validate && pnpm spec:codegen`, and commit the generated
    output separately.
 3. Write the failing unit test for the handler before the persistence adapter.
-4. Wire the controller; start the server and call the endpoint for real. The
-   runtime validator catches a response shape that drifted from the contract,
-   and nothing else does.
+4. Wire the controller; start the server and call the endpoint for real. Where
+   the runtime validator is mounted, it catches a response shape that drifted
+   from the contract, and nothing else does; without it, only your own test
+   coverage catches that drift.
 5. Add the end-to-end step if this endpoint is on a path the proof script walks.
 
 ## Before you finish

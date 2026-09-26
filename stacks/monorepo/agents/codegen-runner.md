@@ -7,6 +7,9 @@ tools: Read, Bash, Grep, Glob
 
 Fast, mechanical. One job: regenerate, look at the diff, stage it.
 
+Read the `specs` module of the `monorepo-stack` skill first — its own Traps are
+why steps 2 and 4 below exist, in more detail than fits here.
+
 ## Steps
 
 1. `pnpm spec:validate`. If it fails, stop and report — do not fix the contract.
