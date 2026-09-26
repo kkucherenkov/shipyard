@@ -1,6 +1,9 @@
 # Copy to .github/workflows/test.yml and DELETE the job blocks and steps for
 # every module this project declined. Delete them — do not comment them out
-# and do not add an `if:`. Branch protection counts a skipped required job as
+# and do not guard a job or step with an `if:` that turns it on or off by
+# module. (That is different from the `if: always()` near the bottom of this
+# file, which runs a cleanup step regardless of an earlier failure and is not
+# a decline switch.) Branch protection counts a skipped required job as
 # blocking rather than passing, so a guarded job leaves pull requests
 # unmergeable; and a required check that never starts is absent from the
 # check list entirely, which reads as passing. Both directions of "disable
@@ -35,9 +38,11 @@ jobs:
         with:
           node-version: <the major from engines.node>
           cache: pnpm
-      # Also runs the ORM's generate through the server package's postinstall.
-      # Without the generated client, type-aware rules see the ORM's namespace
-      # as a stub and pass on code that does not compile.
+      # --- delete this comment (not the step below) unless `backend` is
+      # installed ---
+      # Also runs the ORM's generate through the server package's
+      # postinstall. Without the generated client, type-aware rules see the
+      # ORM's namespace as a stub and pass on code that does not compile.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: ESLint and Prettier
@@ -141,7 +146,12 @@ jobs:
       - name: Build, typecheck, and test the workspace
         run: pnpm -w exec turbo run build typecheck test
 
-      # --- delete the three steps below unless `backend` is installed ---
+      # --- delete the three steps below unless the project has written an
+      # end-to-end proof script (ci.md Step 5). That is a separate condition
+      # from whether `backend` is installed: a project with `backend` and no
+      # such script deletes these too, the same as a project without
+      # `backend` at all.
+      #
       # Everything above calls services and pure functions directly. Nothing
       # above starts an HTTP server, so the controller, the body-parser
       # ordering, the error filter in a real pipeline and the contract
@@ -151,7 +161,9 @@ jobs:
       #
       # The port differs from the server's default so the command is the
       # same one a developer runs locally, where the default is often
-      # already taken.
+      # already taken. <health path> is a route the server must already
+      # answer, unauthenticated, as soon as it boots — nothing this recipe
+      # writes creates one (see ci.md's Preconditions).
       - name: Start the server
         env:
           PORT: 3010
@@ -159,19 +171,19 @@ jobs:
           node apps/backend/dist/main.js > backend.log 2>&1 &
           echo $! > backend.pid
           for _ in $(seq 1 30); do
-            if curl -sf http://localhost:3010/api/v1/health > /dev/null; then
+            if curl -sf http://localhost:3010<health path> > /dev/null; then
               exit 0
             fi
             sleep 1
           done
-          echo 'the server never answered /health' >&2
+          echo 'the server never answered on <health path>' >&2
           cat backend.log >&2
           exit 1
 
       - name: Prove the end-to-end path
         env:
           <PROJECT>_URL: http://localhost:3010/api/v1
-        run: sh scripts/<proof>.sh
+        run: sh scripts/<name>.sh
 
       # Always, so a failed proof still shows what the server logged, and so
       # the job does not wait on a process it started.
