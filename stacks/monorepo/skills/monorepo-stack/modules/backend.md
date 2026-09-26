@@ -45,19 +45,27 @@
    build time, and a constructor parameter comes back `undefined` inside
    the handler that uses it.
 
-   Give the package the scripts every step from here on assumes exist,
-   replacing whatever the generator wrote:
+   Give the package every script but `test` — see below — that steps from
+   here on assume exist, replacing whatever the generator wrote:
 
    ```json
    {
      "scripts": {
        "build": "tsc -p tsconfig.build.json",
        "typecheck": "tsc --noEmit",
-       "test": "vitest run",
        "lint": "eslint ."
      }
    }
    ```
+
+   **Declare `test` in the same commit as the package's first spec, not
+   before.** The runner exits non-zero when it finds no test files, so a
+   declared-but-empty `test` script fails the whole workspace run from the
+   moment this package exists — and this module creates the package here,
+   in Step 1, while its first real spec does not exist until the test-database
+   guard is in place at Step 12. The obvious repair, a flag that passes when
+   nothing was collected, manufactures exactly the silent hole `ci`'s own
+   traps are about.
 
    No `postinstall` yet. It generates the ORM's client and belongs in Step
    8, written in the same edit that installs the ORM's CLI — write it here

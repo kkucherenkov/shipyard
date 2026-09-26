@@ -22,8 +22,8 @@ The module that costs almost nothing, entirely because `specs` already exists.
    rather than only through `node dist/index.js` — and the TypeScript
    compiler preserves it verbatim in the emitted file. Give the package
    `core`'s own two-tsconfig split, `tsconfig.json` and
-   `tsconfig.build.json`, and the scripts every turbo task from here on
-   assumes exist:
+   `tsconfig.build.json`, and every script but `test` — see below — that
+   turbo tasks from here on assume exist:
 
    ```json
    {
@@ -34,7 +34,6 @@ The module that costs almost nothing, entirely because `specs` already exists.
      "scripts": {
        "build": "tsc -p tsconfig.build.json",
        "typecheck": "tsc --noEmit",
-       "test": "vitest run",
        "lint": "eslint ."
      },
      "dependencies": {
