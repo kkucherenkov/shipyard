@@ -150,6 +150,60 @@ if [ "$got" -ne 0 ]; then
   failures=$((failures + 1))
 fi
 
+# Rule 6: a command gets no trigger-phrase, frontmatter or trap-length rule —
+# it has no trigger clause and no ## Traps — but it still may not carry a
+# source-project noun or a dangling relative link.
+root=$(mktemp -d)
+mkdir -p "$root/commands"
+{
+  printf -- '---\n'
+  printf 'name: sample\n'
+  printf 'description: Does something.\n'
+  printf -- '---\n\n'
+  printf '# Sample\n\nDeploys straight to course_shelf.\n'
+} > "$root/commands/sample.md"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s a command with a source-project noun fails\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
+root=$(mktemp -d)
+mkdir -p "$root/commands"
+{
+  printf -- '---\n'
+  printf 'name: sample\n'
+  printf 'description: Does something.\n'
+  printf -- '---\n\n'
+  printf '# Sample\n\nSee [the driver](driver.mjs).\n'
+} > "$root/commands/sample.md"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s a command with a dangling link fails\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
+root=$(mktemp -d)
+mkdir -p "$root/commands"
+{
+  printf -- '---\n'
+  printf 'name: sample\n'
+  printf 'description: Does something, with no trigger phrase at all.\n'
+  printf -- '---\n\n'
+  printf '# Sample\n\nNothing wrong here.\n'
+} > "$root/commands/sample.md"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 0 ]; then
+  printf 'FAIL want=0 got=%s a clean command with no trigger phrase still passes\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
 # Review Focus 2: a skill that reads a CLAUDE.md heading must say what it does
 # when the heading is absent. A skill that omits this will be followed into a
 # deploy against nothing, which reports success.

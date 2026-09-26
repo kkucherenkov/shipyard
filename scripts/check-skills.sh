@@ -1,10 +1,13 @@
 #!/usr/bin/env sh
-# Validate every skill under <root>/skills/.
+# Validate every skill under <root>/skills/, and every command under
+# <root>/commands/.
 #
-# Six rules, each of which encodes a way a skill can be syntactically perfect
-# and still useless. The expensive one is rule 2: a skill is selected by its
-# description alone, so a description that summarises the contents instead of
-# naming a task is never read at the moment it would have helped.
+# Skills carry six rules, each of which encodes a way a skill can be
+# syntactically perfect and still useless. The expensive one is rule 2: a
+# skill is selected by its description alone, so a description that
+# summarises the contents instead of naming a task is never read at the
+# moment it would have helped. A command has no trigger clause and no traps,
+# so it carries only the two rules that do not depend on either — see rule 6.
 set -u
 
 root=${1:-.}
@@ -13,6 +16,38 @@ failures=0
 fail() {
   printf 'FAIL %s: %s\n' "$1" "$2" >&2
   failures=$((failures + 1))
+}
+
+# Shared by skills and commands: neither may carry a noun from the repository
+# these procedures were extracted from. $1 is what to grep (a skill's whole
+# directory, or a single command file), $2 is the label to fail under.
+check_forbidden_nouns() {
+  if grep -rqiE 'course.?shelf|@app/|apps/(backend|web|mobile)|packages/(specs|ui)|centrifugo|prisma|nestjs|nuxt|dockge|\bnas\b|\bE[0-9]{2}-F[0-9]{2}\b' "$1"; then
+    fail "$2" 'carries a noun from the source project'
+  fi
+}
+
+# Shared by skills and commands: every relative link must resolve. $1 is the
+# file to read links from, $2 is its directory, $3 is the label to fail
+# under. Matches into a variable rather than piping into `while`, so `fail`
+# runs in this shell and `failures` survives the loop.
+check_dangling_links() {
+  links=$(grep -o '](\([^)#][^)]*\))' "$1" | sed 's/^](//; s/)$//')
+  [ -n "$links" ] || return 0
+  oldifs=$IFS
+  IFS='
+'
+  set -f
+  for link in $links; do
+    case $link in
+      http*|mailto:*) continue ;;
+    esac
+    target=$(printf '%s' "$link" | sed 's/#.*//')
+    [ -z "$target" ] && continue
+    [ -e "$2/$target" ] || [ -e "$root/$target" ] || fail "$3" "dangling link: $target"
+  done
+  set +f
+  IFS=$oldifs
 }
 
 for skill in "$root"/skills/*/SKILL.md; do
@@ -33,9 +68,7 @@ for skill in "$root"/skills/*/SKILL.md; do
   fi
 
   # 3. No nouns from the repository these procedures were extracted from.
-  if grep -rqiE 'course.?shelf|@app/|apps/(backend|web|mobile)|packages/(specs|ui)|centrifugo|prisma|nestjs|nuxt|dockge|\bnas\b|\bE[0-9]{2}-F[0-9]{2}\b' "$dir"; then
-    fail "$skill" 'carries a noun from the source project'
-  fi
+  check_forbidden_nouns "$dir" "$skill"
 
   # 4. Every trap keeps its evidence. A paragraph under ## Traps shorter than
   #    200 characters is an instruction without the observation that earned it,
@@ -64,28 +97,20 @@ for skill in "$root"/skills/*/SKILL.md; do
   fi
 
   # 5. Every relative link resolves. A skill that names a file it does not have
-  #    costs the whole session that trusts it. Same variable-capture fix as
-  #    rule 4, for the same reason.
-  links=$(grep -o '](\([^)#][^)]*\))' "$skill" | sed 's/^](//; s/)$//')
-  if [ -n "$links" ]; then
-    oldifs=$IFS
-    IFS='
-'
-    set -f
-    for link in $links; do
-      case $link in
-        http*|mailto:*) continue ;;
-      esac
-      target=$(printf '%s' "$link" | sed 's/#.*//')
-      [ -z "$target" ] && continue
-      [ -e "$dir/$target" ] || [ -e "$root/$target" ] || fail "$skill" "dangling link: $target"
-    done
-    set +f
-    IFS=$oldifs
-  fi
+  #    costs the whole session that trusts it.
+  check_dangling_links "$skill" "$dir" "$skill"
 done
 
-# 6. No two skills may claim the same trigger, or the choice between them is
+# 6. A command carries no trigger clause and no traps — those rules stay
+#    skill-only — but it is still prose a person reads and can still name a
+#    file that does not exist, so the noun and link checks apply to it too.
+for cmd in "$root"/commands/*.md; do
+  [ -e "$cmd" ] || continue
+  check_forbidden_nouns "$cmd" "$cmd"
+  check_dangling_links "$cmd" "$(dirname "$cmd")" "$cmd"
+done
+
+# 7. No two skills may claim the same trigger, or the choice between them is
 #    arbitrary and half of what they carry becomes unreachable. The message
 #    names every skill that collided, not just the trigger text — a message
 #    naming only one skill leaves the reader guessing which pair it is.
