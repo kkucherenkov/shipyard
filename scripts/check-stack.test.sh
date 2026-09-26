@@ -362,6 +362,8 @@ expect_graph 1 'table names a module with no file' 'tabled only: docker' \
 expect_graph 1 'directory holds a module the table omits' 'present only: docker' \
   'core' 'core docker'
 expect_graph 0 'accepts a module name with digits' '' 'web2' 'web2'
+expect_graph 1 'table row missing while the module file is present' \
+  'tabled only: none; present only: core' '' 'core'
 
 # --- R3: every module file carries the six headings, in order ---
 root=$(mktemp -d)
@@ -455,6 +457,31 @@ mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
   printf -- '---\n\n# Monorepo stack\n'
 } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
 expect_root 1 'a stack skill description with no trigger phrase' \
+  'does not name a triggering task'
+
+# --- R8: only the frontmatter block counts, not the whole file — a body
+# line that merely starts "name:" or "description:" (plausible in a file
+# whose job is teaching someone to author a module) must not stand in for
+# the frontmatter key ---
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
+{
+  printf -- '---\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n'
+  printf 'A module file'"'"'s own frontmatter reads:\n\nname: sample-module\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+expect_root 1 'a body line starting "name:" outside the frontmatter block' \
+  'frontmatter is missing a non-empty name'
+
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
+{
+  printf -- '---\nname: monorepo-stack\n---\n\n# Monorepo stack\n\n'
+  printf 'A module file'"'"'s own description might read:\n\n'
+  printf 'description: Use when adding a component.\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+expect_root 1 'a body line starting "description:" outside the frontmatter block' \
   'does not name a triggering task'
 
 if [ "$failures" -gt 0 ]; then
