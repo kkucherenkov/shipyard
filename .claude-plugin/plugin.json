@@ -10,8 +10,10 @@
     "claude-code",
     "process",
     "task-stack",
-    "ci",
-    "release",
-    "code-review"
+    "lane-discipline",
+    "ci-gates",
+    "issue-bookkeeping",
+    "deploy-verify",
+    "release-audit"
   ]
 }
