@@ -8,6 +8,11 @@
 # unmergeable; and a required check that never starts is absent from the
 # check list entirely, which reads as passing. Both directions of "disable
 # it" are wrong, in opposite ways.
+#
+# Then delete this header, down to the blank line above `name:`. It is
+# addressed to you and not to the runner, it survives the copy without
+# breaking anything, and nothing downstream looks for it — the placeholder
+# grep in ci.md's Verify does not match a line with no brackets in it.
 
 name: Tests
 
@@ -118,6 +123,9 @@ jobs:
     # turbo.json — on the task, never in globalEnv.
     env:
       DATABASE_URL: postgresql://<user>:<password>@localhost:5432/<project>_test
+      # One line per further variable the server requires at boot. Delete
+      # this line and the one below outright if there are none: it is the
+      # one placeholder here that is sometimes answered by removing it.
       <OTHER_REQUIRED_VARS>: <ci-only values>
 
     steps:
