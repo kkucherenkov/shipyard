@@ -19,13 +19,8 @@ fail() {
   failures=$((failures + 1))
 }
 
-# .claude-plugin/ holds the plugin's own installation manifest, not recipe
-# content — check-skills.sh draws the same line for layer 1, whose globs
-# (skills/*/SKILL.md, commands/*.md) never reach it either. Without this
-# exclusion, plugin.json's own "version": "0.1.0" reads as R2's pinned-range
-# shape and the recipe would be unable to declare its own plugin version.
 files=$(find "$stack_root" -type f \( -name '*.md' -o -name '*.json' \
-  -o -name '*.yml' -o -name '*.yaml' \) -not -path '*/.claude-plugin/*' | sort)
+  -o -name '*.yml' -o -name '*.yaml' \) | sort)
 [ -n "$files" ] || { echo 'stack ok'; exit 0; }
 
 oldifs=$IFS
@@ -48,9 +43,23 @@ for f in $files; do
   # block. A floor written "24.15+" matches none of them, and neither does a
   # version quoted inside a trap as evidence ("dash rejected it until 0.5.12"),
   # which is a fact about history rather than an instruction.
-  if grep -qE '[A-Za-z0-9._/-]@[0-9]+\.[0-9]+|image: *[A-Za-z0-9./_-]+:[0-9]+\.[0-9]+|"[~^]?[0-9]+\.[0-9]+\.[0-9]+"' "$f"; then
-    fail "$f" 'pins a version in an install specifier (D12: a floor, or nothing)'
-  fi
+  #
+  # A plugin's own .claude-plugin/*.json is exempt from THIS rule only: D13
+  # requires plugin.json to carry "version", and a manifest's own version is
+  # not an install specifier — nothing installs a plugin.json the way it
+  # installs a dependency. R1 does NOT get this exemption: the manifest's
+  # description/keywords fields are the marketplace's user-facing copy, the
+  # first thing a stranger reads, and layer 1 already shipped an identity
+  # noun (packages/ui) through a noun rule that skipped the file the noun
+  # actually appeared in. Do not widen this skip to cover R1 too.
+  case $f in
+    */.claude-plugin/*.json) ;;
+    *)
+      if grep -qE '[A-Za-z0-9._/-]@[0-9]+\.[0-9]+|image: *[A-Za-z0-9./_-]+:[0-9]+\.[0-9]+|"[~^]?[0-9]+\.[0-9]+\.[0-9]+"' "$f"; then
+        fail "$f" 'pins a version in an install specifier (D12: a floor, or nothing)'
+      fi
+      ;;
+  esac
 
   case $f in *.md) ;; *) continue ;; esac
 
