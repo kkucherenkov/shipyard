@@ -35,18 +35,28 @@ stack=$(docker inspect <container> --format \
 ```
 
 The label is `config_files`, plural: a stack can be assembled from more than
-one file, comma-separated, and the value is rarely `compose.yaml` in whatever
-directory happens to be the reader's current one. Split it into the raw paths
-and into the `-f` flags Compose needs, once, and reuse both below:
+one file, comma-separated. Splitting it into a space-separated `$paths` and
+reusing that unquoted — `for f in $paths`, `docker compose $files pull` — is
+the same trap `ci-gates` records for `$ids`: an unquoted multi-value variable
+word-splits on every shell that isn't zsh, and doesn't split at all on zsh,
+so the maintainer's own shell silently collapses two files into one `-f`
+argument, or one loop iteration instead of two. Read `$stack` one path per
+line instead, `printf '%s\n' "$stack" | tr ',' '\n'`, everywhere below, and
+build the `-f` flags Compose needs the same way:
 
 ```sh
-paths=$(printf '%s' "$stack" | tr ',' ' ')
-files=$(printf -- '-f %s ' $paths)
+files=$(printf '%s\n' "$stack" | tr ',' '\n' | while read -r f; do printf -- '-f %s ' "$f"; done)
 ```
 
-The same shape of command, pointed at `docker ps` instead, answers the
-question a deploy is actually about — what is running right now, not what a
-document says should be running:
+`$files` is now itself a multi-flag string, so handing it to `docker compose`
+unquoted hits the identical trap one level up. Every command below that
+needs it runs it through `eval` instead — re-parsing a string as fresh shell
+syntax tokenizes it on whitespace the ordinary way, in every shell, zsh
+included, unlike expanding an already-stored variable.
+
+The same source, read the same way, answers the question a deploy is
+actually about — what is running right now, not what a document says should
+be running — pointed at `docker ps` instead:
 
 ```sh
 docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
@@ -59,8 +69,8 @@ proxy are unchanged by an application release, and restarting them buys
 nothing while costing uptime.
 
 ```sh
-docker compose $files pull <service...>
-docker compose $files up -d <service...>
+eval "docker compose $files pull <service...>"
+eval "docker compose $files up -d <service...>"
 ```
 
 ## Verify with the version, never the container status
@@ -77,19 +87,21 @@ deployed.
 
 ## Rollback
 
-Keep a copy of every file `$paths` named, suffixed with the version you are
-leaving, before touching anything:
+Keep a copy of every file `$stack` named, suffixed with the version you are
+leaving, before touching anything. Reading it into a `while read -r` loop
+rather than an unquoted `for f in $paths` is the same fix as above, for the
+same reason:
 
 ```sh
-for f in $paths; do cp "$f" "$f.<old-version>"; done
+printf '%s\n' "$stack" | tr ',' '\n' | while read -r f; do cp "$f" "$f.<old-version>"; done
 ```
 
 A rollback then needs neither git history nor memory of the previous tag:
 restore the copies and restart the same services.
 
 ```sh
-for f in $paths; do cp "$f.<old-version>" "$f"; done
-docker compose $files up -d <service...>
+printf '%s\n' "$stack" | tr ',' '\n' | while read -r f; do cp "$f.<old-version>" "$f"; done
+eval "docker compose $files up -d <service...>"
 ```
 
 A release that carries a database migration is not rollable this way.
@@ -112,9 +124,13 @@ checks exit codes logs a clean success — having pulled and restarted the
 exact build that was already running. The first time this went unnoticed it
 cost an afternoon of chasing a version mismatch back to this one line. The
 only place the missed edit is visible is the compose file itself, so back it
-up and read the changed line back with `grep` before pulling, not after:
-`for f in $paths; do cp "$f" "$f.<old-version>"; done && sed -i.bak
-'s#service:<old>#service:<new>#' $paths && grep -n 'service:' $paths`.
+up and read the changed line back with `grep` before pulling, not after —
+`xargs`, not an unquoted `$paths`, hands each file to `sed` and `grep` as its
+own argument regardless of which shell is running this:
+`printf '%s\n' "$stack" | tr ',' '\n' | while read -r f; do cp "$f"
+"$f.<old-version>"; done && printf '%s\n' "$stack" | tr ',' '\n' | xargs
+sed -i.bak 's#service:<old>#service:<new>#' && printf '%s\n' "$stack" | tr
+',' '\n' | xargs grep -n 'service:'`.
 
 **A compose file that pins its own `name:` field ignores the directory a
 command runs from.** Compose resolves the project name from that field
