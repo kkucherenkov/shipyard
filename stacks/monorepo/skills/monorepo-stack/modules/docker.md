@@ -72,19 +72,22 @@ for as long as it takes somebody to work out which instance they have been
 talking to. A recipe that says "use a non-default port" without that sentence
 gets overridden by the next person who finds the remap inconvenient.
 
-**The path a service holds its state at belongs to the image tag, not to the
-software, and a floating tag moves it under a volume that was correct last
-month.** Two tags of one database's current major, on the same day: with the
+**An image's entrypoint can start refusing a volume that worked last month,
+without the data path itself changing at all.** Two tags of one database's
+current major, on the same day, against the identical compose file: with the
 volume mounted where every guide and every older compose file puts it, the
 floating major-only tag exited `1` at first boot on an empty volume —
 `there appears to be PostgreSQL data in: /var/lib/postgresql/data (unused
-mount/volume)` — while the pinned major.minor tag of the same major started
-and reported healthy against the identical file. Both images declare the same
-data directory internally; only one of them refuses the old mount point. So
-read the image's own documentation for where it keeps state when you fill in
-the volume, and re-read it when you move the tag, rather than copying the
-path out of the last project. Verify item 2 below is what catches this, and
-only if you run it with `-a`.
+mount/volume)` — while a pinned major.minor tag of the same major started and
+reported healthy. Inspecting both images shows why the obvious diagnosis is
+wrong: they declare the **same** data directory. Nothing moved. One
+entrypoint revision began rejecting a mount at the legacy path and the other
+had not yet, so a tag that floats across those revisions changes the file's
+behaviour while the file, the image's own configuration and every sentence
+anyone would write about it stay the same. Read the image's own
+documentation for where it wants the mount, and re-read it when you move the
+tag. Verify item 2 below is what catches this, and only if you run it
+with `-a`.
 
 **A CI service container is reached on the image's own port, not the host
 remap, and the comment saying so has to live in the workflow.** The remap

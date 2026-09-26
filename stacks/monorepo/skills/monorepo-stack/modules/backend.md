@@ -108,8 +108,11 @@
    specific way this fails.
 
 5. **`(Only with specs.)` Mount the contract validator against the spec
-   package's document**, with request and response validation on and
-   **security validation off**. Authentication is a framework guard's job;
+   package's document**, resolved **through that package's name** rather
+   than by a relative path out of this package's build output — which is
+   why `specs`' own Step 5 exports the document, and where a workspace that
+   builds, typechecks and lints clean still dies at boot. With request and
+   response validation on and **security validation off**. Authentication is a framework guard's job;
    letting the validator reject first turns a 401 into a 500 and hides which
    layer refused.
 
@@ -124,8 +127,10 @@
 7. **Install a global exception filter** that reads the status off either a
    framework exception or **anything else carrying a numeric `status`**, and
    renders the error schema the contract declares. Detect that second shape
-   by the `status` alone. Do not exclude `Error` instances from it: the
-   trap below explains what that costs, and it costs it on the first
+   by its numeric `status` — and, if you also require the `message` to be a
+   string because the filter reads it, require exactly that and nothing
+   more. What the shape test must **not** do is exclude `Error` instances:
+   the trap below explains what that costs, and it costs it on the first
    request. The second shape is only ever
    thrown by the contract validator — the `(Only with specs.)` step above
    that mounts it — so without `specs` that branch simply never fires; the
@@ -203,8 +208,9 @@ own exception type, so every validator rejection — a 400 on a bad body, a
 404 on an undeclared route — surfaces as an unhandled 500. That much is
 stable. What is not stable is the shape: the validator used here throws
 named `Error` subclasses (`Bad Request`, `Not Found`) that carry a numeric
-`status`, and a filter written against "a plain `{ status, message }`, and
-specifically not an `Error`" therefore matches none of them. Measured on a
+`status`, and a filter whose shape test *excludes* `Error` instances —
+which "a plain object, not a framework exception" invites — therefore
+matches none of them. Measured on a
 live server, three for three: a body with an extra property, a variant
 missing its discriminated field, and an undeclared route all came back
 `500` with `Internal Server Error` in the body — and the 400s were logged
