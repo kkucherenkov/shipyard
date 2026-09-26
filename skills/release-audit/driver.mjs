@@ -13,7 +13,7 @@
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { signIn, cookieNames, bearerStorageKey } from './auth-adapter.mjs';
+import { signIn, cookieNames, bearerStorageKey, isAuthRoute } from './auth-adapter.mjs';
 // axe-core is often installed somewhere this file's own module resolution
 // cannot see — nested under a workspace package rather than hoisted to
 // where the driver runs from. AXE_PATH is the escape hatch for that case;
@@ -322,12 +322,14 @@ async function main() {
       await page.route('**/api/v1/**', (route) => {
         const u = route.request().url();
         // Break only the data the screen under test is about. Faking auth logs
-        // the audit out; faking /admin/has-users or /admin/instance makes the
-        // global middleware think the instance is uninitialised and funnels
-        // every route into the first-run wizard, which is a different screen
-        // than the one being audited.
+        // the audit out (isAuthRoute is the adapter's own definition of "auth",
+        // so a project whose sign-in flow lives somewhere else fixes this by
+        // editing auth-adapter.mjs, not here); faking /admin/has-users or
+        // /admin/instance makes the global middleware think the instance is
+        // uninitialised and funnels every route into the first-run wizard,
+        // which is a different screen than the one being audited.
         if (
-          u.includes('/auth/') ||
+          isAuthRoute(u) ||
           u.includes('/admin/has-users') ||
           u.includes('/admin/instance')
         ) {

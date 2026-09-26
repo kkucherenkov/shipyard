@@ -63,11 +63,19 @@ states in `main()`.
 Authentication is the one part of the driver genuinely shaped by the product
 it audits, so it lives entirely in [auth-adapter.mjs](auth-adapter.mjs): the
 personas map, the sign-in route, the session cookie name, the locale cookie
-name, the bearer-token localStorage key, and the cached-token probe endpoint.
-A project with a different auth flow rewrites that one file —
-`signIn(base, persona, password)` returning `{ token, cookie }`,
-`cookieNames()` returning `{ session, locale }`, and `bearerStorageKey()`
-returning a string — and touches nothing in `driver.mjs`.
+name, the bearer-token localStorage key, the auth-route pattern the `states`
+mode must not mock, and the cached-token probe endpoint. A project with a
+different auth flow rewrites that one file — `signIn(base, persona,
+password)` returning `{ token, cookie }`, `cookieNames()` returning
+`{ session, locale }`, `bearerStorageKey()` returning a string, and
+`isAuthRoute(url)` returning a boolean — and touches nothing in
+`driver.mjs`.
+
+A run caches each persona's minted token to disk next to `auth-adapter.mjs`,
+one file per persona-and-target-host pair (`.auth-<persona>-<host>.json`),
+so a sweep across many pages doesn't spend the sign-in rate limit on
+plumbing. That file holds a live bearer token and session cookie — treat it
+as a credential, not as build output; it is git-ignored, not cleaned up.
 
 ## What the driver still assumes
 
