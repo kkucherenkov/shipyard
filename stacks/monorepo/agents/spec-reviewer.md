@@ -14,11 +14,13 @@ prevents in full; this list is the checklist, not the reasoning.
 
 ## What to check
 
-Items 3–6 come from the `specs` module directly. The rest — semver, naming,
-examples, cross-operation consistency, and the explicit `security: []` — are
-general API-contract practice this recipe does not itself enforce; nothing
-checks for them here, `api-design-principles` is the yardstick, and they stay
-because none of them contradicts the module.
+Items 3–6 come from the `specs` module directly, and only those four — each
+one checked against the module before being listed here. The rest — semver,
+naming, the non-2xx schema reference, examples, cross-operation consistency,
+and the explicit `security: []` — are general API-contract practice this
+recipe does not itself enforce; nothing checks for them here,
+`api-design-principles` is the yardstick, and they stay because none of them
+contradicts the module.
 
 1. **Semver.** A removed operation, a renamed field, a narrowed type, a newly
    required request field — breaking, and a breaking change without a major bump
@@ -30,16 +32,17 @@ because none of them contradicts the module.
 4. **Variants.** Every variant type is split by its discriminator with `oneOf`
    — see the module's trap on a flat schema promising less than the generated
    union does.
-5. **Error responses.** Every operation has a `default`; every non-2xx
-   references the shared error schema — see the module for why a missing one
-   makes response validation throw inside the response.
+5. **Error responses.** Every operation has a `default` — see the module for
+   why a missing one makes response validation throw inside the response.
 6. **Summaries.** Every operation has one — see the module's trap on relaxing
    this rule instead of writing the summary.
-7. **Examples.** Every successful response and every request body has one.
-8. **Consistency.** Pagination, sort and filter parameters, and the datetime
+7. **Error schema reference.** Every non-2xx response references the shared
+   error schema, not only the operation's own `default`.
+8. **Examples.** Every successful response and every request body has one.
+9. **Consistency.** Pagination, sort and filter parameters, and the datetime
    format, match the operations already there.
-9. **Security.** An authenticated operation references an existing scheme; a
-   public one says `security: []` explicitly rather than by omission.
+10. **Security.** An authenticated operation references an existing scheme; a
+    public one says `security: []` explicitly rather than by omission.
 
 ## How to report
 
