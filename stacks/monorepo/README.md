@@ -49,3 +49,31 @@ idiom.
 ## License
 
 MIT. See [`../../LICENSE`](../../LICENSE).
+
+## Validated
+
+Last run: 2026-09-27. Every in-scope module was installed from these
+instructions into an empty directory, and the resulting workspace installed
+from a cleared `node_modules` with a frozen lockfile, then built, typechecked,
+linted and tested clean. The server was started from its own build and driven
+over HTTP: the contract's rejections, the error filter's two halves, the
+body-parser ordering and the configuration guard were checked against a
+running process rather than reasoned about. A second tree was generated with
+the contract and CLI modules declined; it left no reference to either,
+disabled nothing, and passed the same gates.
+
+Two things that run were **not** run, and saying so is part of the record: no
+hosted runner has executed the workflow template — it was filled in, parsed
+and formatted, and its steps were run by hand locally — and the shell checks
+in `ci`'s Verify needed a container, because the machine's `/bin/sh` was not
+the runner's.
+
+The run rewrote the recipe in fourteen places. Six were instructions that
+could not be followed in the order given, three were checks that passed
+without checking anything, and the rest were claims about a generator's
+output that its current version no longer makes.
+
+Re-run this when a module changes. A recipe that calls upstream generators
+goes stale silently — the generators move and the instructions do not — so the
+run is what reports the staleness, and the date above is how long ago
+something last did.
