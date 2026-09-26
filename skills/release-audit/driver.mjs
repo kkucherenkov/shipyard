@@ -27,14 +27,10 @@ const BASE = process.env.AUDIT_BASE ?? 'http://localhost:8090';
 // it, or pointing AUDIT_BASE anywhere but localhost drops both cookies
 // silently and the run lands in the sign-in-redirect failure mode below.
 const BASE_HOST = new URL(BASE).hostname;
-const PASS_ENV = process.env.AUDIT_PASSWORD;
 const OUT = process.env.AUDIT_OUT ?? new URL('out2', import.meta.url).pathname;
 // The key the target app reads its color-mode preference from. Frameworks
 // disagree on this, so it is an override rather than a literal.
 const COLOR_MODE_KEY = process.env.AUDIT_COLOR_MODE_KEY ?? 'color-mode';
-
-const PASS = PASS_ENV ?? 'AuditPass123!';
-const { session: SESSION_COOKIE, locale: LOCALE_COOKIE } = cookieNames();
 
 // CORE, ALL and PERSONA_NAMES all come from the project's own declared
 // surface — `## Audit routes` / `## Audit personas` in its CLAUDE.md, see
@@ -54,6 +50,22 @@ function requiredList(envVar, heading) {
   }
   return raw.split(',').filter(Boolean);
 }
+
+// A literal fallback password is the same guess requiredList already
+// refuses for routes and personas, and worse in a public repository: it's a
+// secret-scanner magnet sitting in a file whose own comments promise not to
+// guess. Fail fast instead — setup.md names AUDIT_PASSWORD in the
+// account-creation step, so there is nowhere else to look it up.
+function requiredEnv(envVar, hint) {
+  const raw = process.env[envVar];
+  if (!raw) {
+    throw new Error(`${envVar} is required — ${hint}. Refusing to guess.`);
+  }
+  return raw;
+}
+
+const PASS = requiredEnv('AUDIT_PASSWORD', 'the password every audit persona was seeded with, see setup.md');
+const { session: SESSION_COOKIE, locale: LOCALE_COOKIE } = cookieNames();
 
 // The surfaces a real user meets constantly (full matrix) and everything
 // else (one pass), so the run stays finishable.

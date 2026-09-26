@@ -56,10 +56,12 @@ stack's own mounts, or every reference to a stored file resolves to nothing.
 
 Create one account per persona named under `## Audit personas` in the
 project's `CLAUDE.md`, through whatever sign-up path the project itself
-exposes. Grant each the access its persona implies — a role does not always
-imply content access, so an admin persona may still need an explicit grant —
-and leave at least one persona with nothing granted: the account with no
-access is where the interesting failures live.
+exposes, all sharing one password set as `AUDIT_PASSWORD` for the driver —
+`driver.mjs` refuses to guess one, so this is the only place that password is
+written down. Grant each account the access its persona implies — a role
+does not always imply content access, so an admin persona may still need an
+explicit grant — and leave at least one persona with nothing granted: the
+account with no access is where the interesting failures live.
 
 Space the sign-ups out if the project rate-limits them; a failed attempt
 usually still counts against the limit.

@@ -1,3 +1,4 @@
 .DS_Store
 *.swp
 skills/release-audit/.auth-*.json
+skills/release-audit/out2/

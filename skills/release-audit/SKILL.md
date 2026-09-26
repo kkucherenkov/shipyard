@@ -40,6 +40,23 @@ keeps it. If either heading is absent, this project has not described its
 own surface — say so and stop. Auditing a guessed route list produces a
 report whose gaps are invisible.
 
+## Before you run this
+
+`driver.mjs` statically imports `@playwright/test` and resolves `axe-core`
+from its own file location, and this plugin ships no `package.json` — Node
+resolves both from where `driver.mjs` lives, not from the working directory,
+so running it from inside an installed plugin fails before a single
+environment variable is read:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@playwright/test'
+```
+
+Run it from a checkout of the project being audited instead — install the
+two dependencies there (or copy `driver.mjs` and `auth-adapter.mjs` into a
+checkout that already has them), then `npx playwright install chromium`
+before the first run.
+
 ## Running it
 
 [driver.mjs](driver.mjs) is the harness. It asserts nothing — it writes a
@@ -52,11 +69,26 @@ fast if any is unset rather than falling back to a guessed one.
 AUDIT_CORE="<the surfaces a real user meets constantly, from ## Audit routes>" \
 AUDIT_ALL="<every route worth one pass, from ## Audit routes>" \
 AUDIT_PERSONAS="<the persona names, from ## Audit personas>" \
+AUDIT_BASE="<the running instance to audit, e.g. http://localhost:8090>" \
+AUDIT_OUT="<where reports and screenshots land — outside the plugin's own \
+  directory; see the .gitignore trap below>" \
+AUDIT_PASSWORD="<the password every audit persona was seeded with, see setup.md>" \
+AXE_PATH="<path to axe-core/axe.min.js, if it is not on this checkout's own \
+  module resolution>" \
+CHROME_BIN="<a Chromium binary, if Playwright's bundled one is not what \
+  should be audited>" \
 node driver.mjs sweep    # matrix sweep + accessibility scan
 ```
 
-`states` reads the same three variables and forces the error / empty / slow
-states in `main()`.
+`states` reads the same variables and forces the error / empty / slow states
+in `main()`.
+
+`AUDIT_OUT` defaults to `out2` next to `driver.mjs`, inside this plugin's own
+directory — a `git add -A` from there during a bake phase would publish
+`report.json` and a screenshot per matrix combination, sourced from a
+**production dump**, into a public repository. Point it somewhere outside
+the plugin, or rely on this plugin's own `.gitignore` entry if the checkout
+you copied the driver into is this one.
 
 ## The sign-in path is isolated in one file
 
@@ -92,6 +124,13 @@ first written against:
 - `AUDIT_COLOR_MODE_KEY` defaults to `color-mode`, and the theme-detection
   probe reads `data-theme` or a `dark` class — both assume one theming
   convention.
+- The baseline pass in `sweep` and all of `states` mode sign in as a persona
+  literally named `admin` — `driver.mjs:240` and `:277` — so `AUDIT_PERSONAS`
+  can add or rename the other personas but cannot rename this one out from
+  under those two passes.
+- `auth-adapter.mjs:32-36` fixes the persona map to exactly three keys,
+  `admin`, `learner` and `empty`. `AUDIT_PERSONAS` naming anything else fails
+  `signIn` with `unknown persona`, not a partial run.
 
 A project shaped differently in any of these needs to edit the driver
 itself; declaring `## Audit routes` / `## Audit personas` does not reach
