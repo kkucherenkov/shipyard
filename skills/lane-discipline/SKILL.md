@@ -49,6 +49,11 @@ comes back:
   sleep-and-poll loop. A poll loop spends the lane's own context reading its
   own polling output, and because it is busy polling, it is the last lane to
   report back even when its work finished first.
+- **Where it records its own task.** Each lane owns one entry under
+  `specs/tasks/active/`, named after its own branch slug — see
+  [task-stack](../task-stack/SKILL.md#task-id-format) for why the id is a
+  branch slug rather than a counter: it is the same collision this skill
+  exists to prevent, one directory over.
 
 ## Traps
 

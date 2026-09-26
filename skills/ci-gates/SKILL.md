@@ -52,7 +52,10 @@ for a commit pushed by `github-actions[bot]` using `GITHUB_TOKEN` — otherwise
 a workflow that pushes its own commit would retrigger itself forever. A pull
 request updated this way keeps showing the previous run's result, so a check
 that is still red after the fix reads as a slow queue instead of what it
-actually is: a check that never ran against the new commit at all.
+actually is: a check that never ran against the new commit at all. Push with
+a personal access token instead, or dispatch the workflow directly, and
+reconcile `gh run list --branch <b> --json headSha` against the pull
+request's actual head commit before trusting any result it reports.
 
 **A branch carrying that bot commit puts every later workflow run into
 `action_required`.** Those runs never start on their own, and they do not
@@ -79,10 +82,12 @@ a tool call and lands its output in context whether anything changed or not,
 so the session that is supposed to be watching burns the budget it needs to
 report the result and is the last one to report back — even when its work
 finished first. From a shell, `gh run watch --exit-status` blocks until the
-run finishes and fails if the run failed. In this harness, the `Monitor` tool
-gives one notification per check as it settles, and `Bash` with
-`run_in_background` plus an `until` loop gives one notification when the
-whole wait is done. Whichever one is used, cover every terminal state —
+run finishes and fails if the run failed. A background shell plus an `until`
+loop that exits once the run settles gives one notification for the whole
+wait instead of one per poll; some harnesses also expose a dedicated
+watch-and-notify tool of their own (Claude Code's `Monitor`, for one) that
+does the same thing without the loop. Whichever mechanism is available, cover
+every terminal state —
 failure, cancelled, timed out — not just success, or a crash reads as
 still-running.
 
