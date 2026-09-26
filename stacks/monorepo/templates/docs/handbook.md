@@ -9,7 +9,8 @@ heading with nothing under it.
 A line marked "general practice" here is not something this recipe's own
 steps or checks enforce — it travels because it is worth writing down once,
 not because a script fails without it. Everything else is backed by a step or
-a trap in this stack's `backend` or `specs` module.
+a trap in this stack's `core`, `backend` or `specs` module — `core` for the
+one TypeScript-compiler convention below, the other two for everything else.
 -->
 
 ## Hard bans
@@ -27,8 +28,9 @@ Rejected in review, no exceptions:
   review; the drift is invisible until a real request hits it and comes back
   a 400 nobody wrote a test for.
 - **No hand-edited file under `packages/specs/src/generated/`.** That
-  directory is the contract's generator output and the reviewable artefact;
-  a hand edit to it is silently gone the next time codegen runs.
+  directory is the contract's generator output, committed rather than
+  gitignored specifically so it is the reviewable artefact; a hand edit to it
+  is silently gone the next time codegen runs.
 - **No applied migration edited in place.** Editing applied SQL desyncs the
   migration tool's own checksum of that file, and the repair is a manual
   write to its bookkeeping table — a fresh clone refuses to migrate at all
