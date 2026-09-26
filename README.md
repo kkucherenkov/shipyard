@@ -9,15 +9,16 @@ auditing a product before cutting a release. Install it once; a later fix to
 any of these reaches every project that installed it through `/plugin
 update`, instead of a copy someone has to remember to paste around.
 
-This is layer 1 of two. Layer 2 is a stack preset — it will ship as a
-separate plugin, `shipyard-monorepo`, for a project shaped like a monorepo
-regardless of which language its modules are written in — and it does not
-exist yet. This plugin runs standalone until it does.
+This is layer 1 of two. Layer 2 is a stack preset — it ships as a separate
+plugin, `shipyard-monorepo`, for a project shaped like a monorepo regardless
+of which language its modules are written in. Installing it is optional;
+this plugin runs standalone either way.
 
 ## What this does not do
 
 - **No stack.** No framework choice, no package manager, no lockfile, no
-  linter config. Those belong to layer 2, which has not been built.
+  linter config. Those belong to layer 2, which is the optional
+  `shipyard-monorepo` plugin below.
 - **No scaffolding.** A plugin can put `skills/`, `agents/` and `commands/`
   into a Claude Code session; it cannot put `CLAUDE.md`, `specs/tasks/`, or a
   CI workflow into your repository — those are per-repository files, not
