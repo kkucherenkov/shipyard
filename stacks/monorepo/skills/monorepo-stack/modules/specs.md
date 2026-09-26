@@ -40,28 +40,45 @@ turns it into code.
    depend on the bundler existing as a real dependency, not just as a name
    in a script string.
 
-3. **Extend `core`'s base config in the package's own `tsconfig.json`, with
-   the overrides this generator's output actually needs.** Two of them, and
-   which you need depends on what your generator emitted, so run it first
-   (Step 4) and look:
+3. **Extend `core`'s base config in the package's own `tsconfig.json`, and
+   add an override only where this package's own tools prove one is
+   needed.** Three are possible here and none is automatic — every one of
+   them relaxes a check for the package that defines the contract's types,
+   which is the last package to weaken by default. Run the generator (Step
+   4) and the build, and add only what the output and the toolchain
+   actually refuse:
 
-   **Only if the emitted imports are extension-less.** Some generators emit
+   **If the emitted imports are extension-less.** Some generators emit
    `from "./types.gen"` between their own files, which does not resolve
    under the base config's `NodeNext`; others emit `from "./types.gen.js"`,
    which resolves fine and needs nothing. `grep -rhoE "from '\./[^']*'"
    src/generated | sort -u` is the check — one look, and it decides whether
-   the block below belongs in your tree at all. Adding it when the output
-   does not need it is not free: it turns off `NodeNext` resolution
-   checking for the whole package, and the comment justifying it is then
-   describing something that never happened.
+   the two resolution lines below belong in your tree at all. Adding them
+   when the output does not need them is not free: they turn off `NodeNext`
+   resolution checking for the whole package, and the comment justifying
+   them is then describing something that never happened.
 
-   **Always.** Every file under `src/generated/` is written by a generator
-   that does not target `exactOptionalPropertyTypes`, which `core`'s base
-   config sets. On the output measured here that was twelve errors, all of
-   them `TS2379`, all inside the vendored HTTP runtime. Relax the flag for
-   this package rather than excluding the directory from the check: the
-   check is what catches a missing runtime dependency (Verify item 3), and
-   a package that typechecks nothing catches nothing.
+   **If the generated output does not typecheck under
+   `exactOptionalPropertyTypes`.** Run `tsc --noEmit` and read the errors
+   before deciding. Some generators emit output that satisfies the flag —
+   no override, and none wanted. One measured here did not: twelve errors,
+   eleven `TS2379` and one `TS2375`, every one inside the HTTP runtime the
+   generator had vendored into its own output. When that is what you get,
+   relax the flag for this package rather than excluding the directory from
+   the check — the check is what catches a missing runtime dependency
+   (Verify item 3), and a package that typechecks nothing catches nothing.
+
+   **If the bundler's declaration build trips a compiler deprecation.** A
+   bundler that injects a compiler option the installed TypeScript major has
+   deprecated fails the whole build on an option the project never set.
+   Measured here: the declaration half of the bundle exited with
+   `TS5101: Option 'baseUrl' is deprecated and will stop functioning in
+   TypeScript 7.0. Specify compilerOption '"ignoreDeprecations": "6.0"' to
+   silence this error` — the JavaScript bundle had already succeeded, so the
+   failure arrives after a line reading `Build success`. This package's
+   `tsconfig.json` is the only config the bundler reads, so the
+   acknowledgement goes here, and the bundler's own release is what
+   eventually removes the need for it.
 
    ```json
    {
@@ -69,9 +86,9 @@ turns it into code.
      "include": ["src/**/*.ts", "<the generator's own config file>"],
      "compilerOptions": {
        "noEmit": true,
-       // Always: src/generated/ is the generator's output and is not
-       // written against this flag. Relaxed here, not dropped from the
-       // base config, and not worked around by excluding the directory.
+       // Only if the generator's output fails this flag. Relaxed here, not
+       // dropped from the base config, and not worked around by excluding
+       // the directory from the check.
        "exactOptionalPropertyTypes": false,
        // Only if the generator emits extension-less relative imports,
        // which NodeNext resolution rejects. Safe only because the bundle
@@ -79,7 +96,11 @@ turns it into code.
        // this override starts lying. Delete both lines if your generator
        // emits resolvable specifiers.
        "module": "ESNext",
-       "moduleResolution": "Bundler"
+       "moduleResolution": "Bundler",
+       // Only if the bundler's declaration build injects a deprecated
+       // compiler option. Name the major you installed; delete the line
+       // once the bundler stops injecting it.
+       "ignoreDeprecations": "<the TypeScript major you installed>"
      }
    }
    ```
@@ -312,12 +333,25 @@ Each of these has an answer that cannot be produced by accident:
    This is the only check that catches the undeclared runtime dependency, and
    running it on a warm tree proves nothing.
 4. The document is reachable through the package's own name, from another
-   package: `node -e "require('node:module').createRequire('<the consuming
-   package>/x').resolve('<scope>/specs/openapi.yaml')"` prints a path. This
-   is the one check that fails on the `exports` mistake in Step 5, and it
-   has to be run from a consumer rather than from inside the package, where
-   the path resolves off disk and proves nothing. Every other gate is green
-   while this is broken.
+   package. From the workspace root:
+
+   ```sh
+   node -e "console.log(require('node:module')
+     .createRequire(process.cwd() + '/apps/<a consuming package>/x')
+     .resolve('<scope>/specs/openapi.yaml'))"
+   ```
+
+   It prints the path to the document. Three details are load-bearing and
+   each was got wrong once here: `createRequire` needs an **absolute** path
+   or a file URL and throws `ERR_INVALID_ARG_VALUE` on a relative one; the
+   trailing `/x` is a filename for it to resolve *from*, not a file that
+   has to exist; and without the `console.log` the command succeeds
+   silently, which reads as a pass whether or not anything resolved. Run it
+   from a consumer, not from inside the package, where the path resolves off
+   disk and proves nothing. This is the one check that fails on the
+   `exports` mistake in Step 5 — remove that one line from the exports map
+   and this prints `ERR_PACKAGE_PATH_NOT_EXPORTED`, while every other gate
+   in this recipe stays green.
 5. `git ls-files packages/specs/src/generated` prints at least one path.
    Check this before trusting the next line — an empty result means the
    generated sources were never committed, or are gitignored by accident

@@ -45,9 +45,9 @@ The module that costs almost nothing, entirely because `specs` already exists.
 
    `vitest` is this recipe's test runner for every package that has tests;
    add it as a dev dependency here too, since nothing `core` installs brings
-   one — and `@types/node`, which this package needs more than most, since
-   its store comes out of the runtime's own standard library. A script this
-   file does not declare is a task `turbo run` never sees for this package —
+   one — and `@types/node`, under `core` Step 1's per-package rule, which
+   this package cannot skip: its store comes out of the runtime's own
+   standard library. A script this file does not declare is a task `turbo run` never sees for this package —
    it drops silently out of every workspace-wide `build`, `typecheck`,
    `test` or `lint`, rather than failing one.
 

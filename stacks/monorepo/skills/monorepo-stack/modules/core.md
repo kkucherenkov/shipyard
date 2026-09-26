@@ -36,15 +36,19 @@ module that cannot be declined.
    ```
 
    Install the dev dependencies by name and let the package manager resolve
-   them — `pnpm add -Dw typescript @types/node eslint @eslint/js
-   typescript-eslint prettier turbo`. Do not write versions into this file by
-   hand. **Run that command after Step 2, not here**: `-Dw` means "the root of
-   a workspace", and pnpm refuses it — `--workspace-root may only be used
-   inside a workspace`, exit 1 — until the workspace file Step 2 writes
-   exists. `@types/node` is on the list because every package in this recipe
-   compiles against the runtime's own library and nothing else pulls it in;
-   without it a package importing anything under `node:` fails its build with
-   `TS2688: Cannot find type definition file for 'node'`.
+   them — `pnpm add -Dw typescript eslint @eslint/js typescript-eslint
+   prettier turbo`. Do not write versions into this file by hand. **Run that
+   command after Step 2, not here**: `-Dw` means "the root of a workspace",
+   and pnpm refuses it — `--workspace-root may only be used inside a
+   workspace`, exit 1 — until the workspace file Step 2 writes exists.
+
+   Nothing on that list brings `@types/node`, and nothing else does either,
+   so **every package whose sources reach for the runtime adds it as its own
+   dev dependency.** Without it a package importing anything under `node:`
+   fails its build with `TS2688: Cannot find type definition file for
+   'node'`. Per package rather than once at the root: that is where it was
+   measured, and it is what keeps a package that genuinely does not touch
+   the runtime from claiming the types anyway.
 
    Then read what the resolver picked, before going further: install
    TypeScript at the major the type-aware lint plugin's peer range accepts,
@@ -169,9 +173,11 @@ module that cannot be declined.
    directory, and `*.md`.
 
 8. **Write the root `.gitignore`.** Nothing else in this recipe creates one
-   and everything in it assumes one: `node_modules/`, every package's `dist/`,
-   the task runner's own cache directory, `*.tsbuildinfo`, and `.env`. Without
-   it `git status` is unreadable from the first install onward, and every
+   and everything in it assumes one: `node_modules/`, every package's
+   `dist/`, and the task runner's own cache directory. Add `*.tsbuildinfo`
+   once a package emits one and `.env` once one exists — both are ordinary
+   additions, and neither was present in the tree this module was measured
+   against. Without it `git status` is unreadable from the first install onward, and every
    later check that greps the tree — `specs`' committed-generated-source
    check, an audit that a declined module left nothing behind — reads a few
    hundred megabytes of dependencies before reaching a file anybody wrote.
@@ -226,6 +232,20 @@ pointing at the compiler version underneath it. Both cleared the moment
 TypeScript was installed at the lint plugin's declared ceiling. Read the peer
 ranges after the first install and pick the major from the strictest one, or
 the first person to run a generator debugs somebody else's dependency tree.
+
+**A package manager that blocks dependencies' install scripts by default is
+a clean-checkout failure waiting for the first dependency that needs one.**
+pnpm 10 does this, and it reports it as a boxed notice at the end of an
+install that exits `0` — `Ignored build scripts: ...`, naming a compiler
+runtime, a bundler's native binary and a database client's engines on the
+tree measured here. None of the three needed its script and nothing broke,
+which is exactly what makes this worth writing down: the notice scrolls past
+on every warm machine, and the first dependency that genuinely needs its
+postinstall fails on CI or on a new contributor's first clone rather than on
+anyone who could have seen the notice. Read the list after the first install
+and decide each entry deliberately, through the allow-list the package
+manager offers, rather than discovering the policy exists when something
+already depends on it.
 
 **Prettier turned loose on the whole tree rewrites prose whose line breaks were
 chosen.** It reflowed seventeen architecture decision records here — documents

@@ -62,16 +62,24 @@ running process rather than reasoned about. A second tree was generated with
 the contract and CLI modules declined; it left no reference to either,
 disabled nothing, and passed the same gates.
 
-Two things that run were **not** run, and saying so is part of the record: no
-hosted runner has executed the workflow template — it was filled in, parsed
-and formatted, and its steps were run by hand locally — and the shell checks
-in `ci`'s Verify needed a container, because the machine's `/bin/sh` was not
-the runner's.
+Three things were **not** run, and saying so is part of the record. No hosted
+runner has executed the workflow template: it was filled in, parsed and
+formatted, and its steps were run by hand locally. `backend`'s staged
+concurrency verification — the same transaction interleaving watched ten
+times with the lock and ten without — was not built, so the advisory lock and
+the row lock are present in generated code and unexercised. And `ci`'s two
+shell checks needed a container, because the machine's `/bin/sh` was not the
+runner's; they ran there rather than here.
 
-The run rewrote the recipe in fourteen places. Six were instructions that
-could not be followed in the order given, three were checks that passed
-without checking anything, and the rest were claims about a generator's
-output that its current version no longer makes.
+The run rewrote the recipe in fifteen places, and made seven smaller
+corrections in the same files. Two were instructions that could not be
+followed in the order they were given — each stopped the run at the command
+it named. Eight were configuration keys, or whole files, that the recipe
+assumed and never told anyone to create. Three were claims about a tool's
+behaviour that the current version of that tool contradicts. One was a check
+that could not have caught what it was written for. The last was a
+contradiction between two modules, and it is the one worth remembering: it
+left every gate green and the server refusing to start.
 
 Re-run this when a module changes. A recipe that calls upstream generators
 goes stale silently — the generators move and the instructions do not — so the
