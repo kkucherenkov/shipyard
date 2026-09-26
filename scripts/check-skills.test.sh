@@ -147,6 +147,19 @@ if [ "$got" -ne 0 ]; then
   failures=$((failures + 1))
 fi
 
+# Review Focus 2: a skill that reads a CLAUDE.md heading must say what it does
+# when the heading is absent. A skill that omits this will be followed into a
+# deploy against nothing, which reports success.
+for s in deploy-verify issue-bookkeeping ci-gates; do
+  f="$here/../skills/$s/SKILL.md"
+  if [ -f "$f" ] && grep -qiE 'if that heading is absent' "$f"; then
+    printf 'ok   %s states what to do when its heading is absent\n' "$s"
+  else
+    printf 'FAIL %s does not state what to do when its heading is absent\n' "$s" >&2
+    failures=$((failures + 1))
+  fi
+done
+
 if [ "$failures" -gt 0 ]; then
   printf '%s failing case(s)\n' "$failures" >&2
   exit 1
