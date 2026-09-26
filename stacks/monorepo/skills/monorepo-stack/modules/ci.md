@@ -7,6 +7,12 @@
 - A repository hosted somewhere that runs workflows.
 - `core`'s `lint`, `typecheck`, `test` and `build` tasks present, since every
   gate is one of them.
+- If `backend` is installed and the project wants the live-server proof
+  below: a route the server answers, unauthenticated, as soon as it boots.
+  Nothing this recipe writes creates one — `specs`' own Traps assume a
+  liveness probe exists in the contract but neither module adds the route
+  behind it. Add it before wiring this step in, and give its path to the
+  template's `<health path>` placeholder.
 
 ## Steps
 
@@ -18,10 +24,18 @@
    this project declined.** The template marks each with a comment naming its
    module. Delete — never comment out, never guard with an `if:`.
 
-2. **Replace every placeholder** in the copied file. Run
-   `grep -n '<[^>]*>' .github/workflows/test.yml` and treat the output as the
-   list of what remains; an empty result is the check, not a reading of the
-   file.
+2. **Replace every bracketed placeholder** in the copied file, including the
+   health route the readiness loop polls. Run
+   `grep -n '<[^>]*>' .github/workflows/test.yml` and treat the output as
+   that list — but only that list. It does not see a value this recipe
+   already fixed rather than left open: `apps/backend` and its compiled
+   entry point `dist/main.js` (`backend.md`'s own scaffold path and its
+   framework's own build convention), `packages/specs/src/generated`
+   (`specs.md`'s own path), the ORM's own CLI name (`prisma`), or port
+   `3010` (this module's own choice, explained where it's used). Read the
+   file once end to end for these, since they are correct only if the
+   project actually followed those modules — and this one — as written. An
+   empty grep result closes one gap, not both.
 
 3. **Keep each gate a separate job with its own name**, so a red check names
    its own cause. Lint needs no database and should not wait on one.
@@ -32,8 +46,15 @@
    not started is absent from the check list rather than pending, so a gate
    that counts checks reads an unstarted one as passing.
 
-5. **If the project has an end-to-end proof script**, give it an `sh`
-   shebang and keep it POSIX.
+5. **If, and only if, the project has written an end-to-end proof script,
+   put it at `scripts/<name>.sh`** at the repository root — the path
+   `workspace-tests`'s "Prove the end-to-end path" step invokes — **give it
+   an `sh` shebang, and keep it POSIX.** Nothing in this recipe creates that
+   script. Whether one exists is a decision independent of whether `backend`
+   is installed, even though writing one needs a server to prove something
+   against: a project with `backend` and no such script deletes the
+   start/prove/stop steps too, the same as a project without `backend` at
+   all.
 
 6. **Declare each task's environment variables on the task in `turbo.json`**,
    not in `globalEnv` and not only on the CI job.
@@ -80,15 +101,21 @@ right for the task that reads the database and wrong for `build` and
 `typecheck`, which would then miss cache on every change to a connection
 string they never touch.
 
-**A workflow written when the repository held one kind of test does not
-widen itself as workspaces appear.** A green pipeline that runs a tenth of
-the tests looks exactly like a green pipeline. Check what the job actually
-executed — the count, not the colour — every time a package is added.
+**A workflow scoped to what the repository held on day one does not widen
+itself as workspaces are added, and a green run looks identical whether it
+ran ten tests or all of them.** This recipe's own reference project shipped
+several tasks' worth of server code — 83 tests, including the assertion that
+an authentication guard was actually mounted on the controller it was meant
+to protect — before its workflow ran anything beyond a small shell suite
+checking an unrelated gate. Every one of those pull requests reported green;
+none of them had run a single server test. Check what the job actually
+executed — the count, not the colour — every time a package is added, not
+only when the workflow is first written.
 
 **The test-database guard is a repair, not defensive programming.** The
-DB-backed specs truncate several tables in `beforeEach` with no regard for
-what is in them, and they destroyed a development database once before the
-guard existed. `backend`'s `assertTestDatabase`, loaded from `vitest.setup.ts`
+DB-backed specs truncate six tables in `beforeEach` with no regard for what
+is in them, and they destroyed a development database once before the guard
+existed. `backend`'s `assertTestDatabase`, loaded from `vitest.setup.ts`
 through `vitest.config.ts`'s `test.setupFiles`, is that repair: any recipe
 that ships truncating specs must ship it in the same module, because the gap
 between the two is exactly one afternoon of somebody's data. It lives in the
@@ -98,7 +125,8 @@ marker is a database **name** rather than an opt-out variable — a variable
 exported once in a shell survives into every later command in that shell,
 including the one run against the wrong database. A name cannot be exported.
 This module's job is to feed that guard a name that satisfies it: the service
-container's `POSTGRES_DB` above ends in `_test` for exactly this reason.
+container's `POSTGRES_DB` in the template ends in `_test` for exactly this
+reason.
 
 **A proof script with an `sh` shebang and a bash-ism passes on the author's
 machine and fails on the runner, and the failure looks like the thing being
@@ -130,7 +158,14 @@ all — say so in its `CLAUDE.md` rather than leaving the gap silent.
    not appear and its absence is not an error anywhere.
 2. `grep -n '<[^>]*>' .github/workflows/test.yml` prints nothing.
 3. The proof script parses under the runner's shell, not yours:
-   `dash -n scripts/<proof>.sh` (or `sh -n` where `/bin/sh` is dash).
+   `dash -n scripts/<name>.sh` (or `sh -n` where `/bin/sh` is dash) — and know
+   what that does not prove. `-n` parses without executing, so it catches a
+   bashism like process substitution and does **not** catch an invalid
+   `set -o` option: `set -o pipefail` is a syntactically valid simple command
+   whether or not `pipefail` exists as a dash option, so a parse-only check
+   passes it either way. Close that gap directly, without executing the rest
+   of the script: `grep -oE 'set -o [a-z]+' scripts/<name>.sh | while read -r
+   c; do dash -c "$c" || echo "invalid: $c"; done` prints nothing.
 4. From a **fresh clone into an empty directory**, `pnpm install
    --frozen-lockfile && pnpm -w exec turbo run build typecheck test` exits
    `0`. This is the clean-checkout trap checked rather than trusted, and it

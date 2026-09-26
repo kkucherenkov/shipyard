@@ -349,9 +349,12 @@ A workspace with no server declines it. What disappears elsewhere:
 
 - `specs` keeps every step; its contract is still generated and consumed,
   just not enforced at runtime by anything here.
-- `ci` must have its database service, its migration step and its
-  live-server proof step **deleted** from the workflow template — not
-  commented out and not guarded.
+- `ci` must have its database service, its `env:` block carrying
+  `DATABASE_URL`, its migration step, and its three-step live-server proof
+  (start, prove, stop) **deleted** from the workflow template — not
+  commented out and not guarded — and the comment naming this module's
+  `postinstall` in its lint job's install step removed too, since once this
+  module is gone that comment describes a script that no longer exists.
 - `docker`'s database service is probably unwanted too, but that is a
   question for the project rather than a consequence.
 
