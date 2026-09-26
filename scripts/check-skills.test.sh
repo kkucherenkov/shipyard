@@ -7,15 +7,20 @@ subject="$here/check-skills.sh"
 failures=0
 
 # Build a one-skill tree in $1 with frontmatter $2 and body $3.
+#
+# The frontmatter description is held in fm_desc, not desc: POSIX sh has no
+# function-local scope, and expect() below keeps the case label in a variable
+# named desc across this call. Naming both "desc" let this call silently
+# clobber the label with the fixture's own description.
 make_skill() {
   root=$1
-  desc=$2
+  fm_desc=$2
   body=$3
   mkdir -p "$root/skills/sample"
   {
     printf -- '---\n'
     printf 'name: sample\n'
-    printf 'description: %s\n' "$desc"
+    printf 'description: %s\n' "$fm_desc"
     printf -- '---\n\n'
     printf '# Sample\n\n%s\n' "$body"
   } > "$root/skills/sample/SKILL.md"
@@ -24,17 +29,17 @@ make_skill() {
 # Add a named skill to an existing tree in $1 (skill name $2, frontmatter $3,
 # body $4). Lets a case put more than one skill under the same skills/ root —
 # make_skill above stays single-skill and untouched for every case that only
-# needs one.
+# needs one. Same fm_desc naming as make_skill, for the same reason.
 add_skill() {
   root=$1
   name=$2
-  desc=$3
+  fm_desc=$3
   body=$4
   mkdir -p "$root/skills/$name"
   {
     printf -- '---\n'
     printf 'name: %s\n' "$name"
-    printf 'description: %s\n' "$desc"
+    printf 'description: %s\n' "$fm_desc"
     printf -- '---\n\n'
     printf '# %s\n\n%s\n' "$name" "$body"
   } > "$root/skills/$name/SKILL.md"
@@ -74,6 +79,30 @@ expect 1 'a trap paragraph with no evidence fails' \
 
 expect 1 'a source-project noun fails' \
   'Use when deploying course_shelf to the NAS.' "$good_trap"
+
+expect 1 'NAS alone, with no other source-project noun, fails' \
+  'Use when deciding whether a release is ready for the NAS.' "$good_trap"
+
+expect 1 'a bare card id alone, with no other source-project noun, fails' \
+  'Use when card E15-F03 needs closing out.' "$good_trap"
+
+# A missing name: can't go through make_skill, which always writes one — this
+# case constructs its own SKILL.md so the frontmatter simply omits the key.
+root=$(mktemp -d)
+mkdir -p "$root/skills/sample"
+{
+  printf -- '---\n'
+  printf 'description: %s\n' 'Use when a pull request looks green but will not merge.'
+  printf -- '---\n\n'
+  printf '# Sample\n\n%s\n' "$good_trap"
+} > "$root/skills/sample/SKILL.md"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s a missing frontmatter name fails\n' "$got" >&2
+  failures=$((failures + 1))
+fi
 
 expect 1 'a dangling relative link fails' \
   'Use when a pull request looks green but will not merge.' \

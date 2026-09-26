@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 # Validate every skill under <root>/skills/.
 #
-# Five rules, each of which encodes a way a skill can be syntactically perfect
-# and still useless. The expensive one is the first: a skill is selected by its
+# Six rules, each of which encodes a way a skill can be syntactically perfect
+# and still useless. The expensive one is rule 2: a skill is selected by its
 # description alone, so a description that summarises the contents instead of
 # naming a task is never read at the moment it would have helped.
 set -u
@@ -19,19 +19,25 @@ for skill in "$root"/skills/*/SKILL.md; do
   [ -e "$skill" ] || continue
   dir=$(dirname "$skill")
 
+  # 1. Frontmatter must carry a non-empty name.
+  name_val=$(sed -n 's/^name: *//p' "$skill" | head -1)
+  if [ -z "$name_val" ]; then
+    fail "$skill" 'frontmatter is missing a non-empty name:'
+  fi
+
   desc=$(sed -n 's/^description: *//p' "$skill" | head -1)
 
-  # 1. The description must name a task, not the contents.
+  # 2. The description must name a task, not the contents.
   if ! printf '%s' "$desc" | grep -qiE 'use (when|before|after|while)'; then
     fail "$skill" 'description does not name a triggering task (needs "use when/before/after")'
   fi
 
-  # 2. No nouns from the repository these procedures were extracted from.
-  if grep -rqniE 'course.?shelf|@app/|apps/(backend|web|mobile)|packages/specs|centrifugo|prisma|nestjs|nuxt|dockge' "$dir"; then
+  # 3. No nouns from the repository these procedures were extracted from.
+  if grep -rqiE 'course.?shelf|@app/|apps/(backend|web|mobile)|packages/specs|centrifugo|prisma|nestjs|nuxt|dockge|\bnas\b|\bE[0-9]{2}-F[0-9]{2}\b' "$dir"; then
     fail "$skill" 'carries a noun from the source project'
   fi
 
-  # 3. Every trap keeps its evidence. A paragraph under ## Traps shorter than
+  # 4. Every trap keeps its evidence. A paragraph under ## Traps shorter than
   #    200 characters is an instruction without the observation that earned it,
   #    and an instruction without evidence is ignored.
   #    Captured into a variable (not piped into `while`) so `fail` runs in this
@@ -49,20 +55,23 @@ for skill in "$root"/skills/*/SKILL.md; do
     oldifs=$IFS
     IFS='
 '
+    set -f
     for short in $short_traps; do
       [ -n "$short" ] && fail "$skill" "trap without evidence: $(printf '%s' "$short" | cut -c1-60)..."
     done
+    set +f
     IFS=$oldifs
   fi
 
-  # 4. Every relative link resolves. A skill that names a file it does not have
+  # 5. Every relative link resolves. A skill that names a file it does not have
   #    costs the whole session that trusts it. Same variable-capture fix as
-  #    rule 3, for the same reason.
+  #    rule 4, for the same reason.
   links=$(grep -o '](\([^)#][^)]*\))' "$skill" | sed 's/^](//; s/)$//')
   if [ -n "$links" ]; then
     oldifs=$IFS
     IFS='
 '
+    set -f
     for link in $links; do
       case $link in
         http*|mailto:*) continue ;;
@@ -71,11 +80,12 @@ for skill in "$root"/skills/*/SKILL.md; do
       [ -z "$target" ] && continue
       [ -e "$dir/$target" ] || [ -e "$root/$target" ] || fail "$skill" "dangling link: $target"
     done
+    set +f
     IFS=$oldifs
   fi
 done
 
-# 5. No two skills may claim the same trigger, or the choice between them is
+# 6. No two skills may claim the same trigger, or the choice between them is
 #    arbitrary and half of what they carry becomes unreachable. The message
 #    names every skill that collided, not just the trigger text — a message
 #    naming only one skill leaves the reader guessing which pair it is.
@@ -93,12 +103,17 @@ if [ -n "$trigger_hits" ]; then
     oldifs=$IFS
     IFS='
 '
+    set -f
     for trig in $dup_triggers; do
+      # Passed to awk through the environment, not -v: -v runs escape-sequence
+      # processing on its value, so a trigger containing a backslash would
+      # never match the literal $1 == t comparison.
       colliding=$(printf '%s\n' "$trigger_hits" \
-        | awk -F '\t' -v t="$trig" '$1 == t { print $2 }' \
+        | TRIG="$trig" awk -F '\t' '$1 == ENVIRON["TRIG"] { print $2 }' \
         | tr '\n' ',' | sed 's/,$//; s/,/, /g')
       fail 'skills/' "two skills claim the same trigger ($trig): $colliding"
     done
+    set +f
     IFS=$oldifs
   fi
 fi
