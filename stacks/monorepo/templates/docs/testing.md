@@ -3,8 +3,8 @@
 <!--
 Reduced from the modules this stack actually installed, not copied from
 another project. Delete a section whose module this project declined
-(`backend`, `ci`) the same way the stack block does, and do not leave a
-heading with nothing under it.
+(`backend`, `specs`, `ci`) the same way the stack block does, and do not leave
+a heading with nothing under it.
 
 A line marked "general practice" here is not something this recipe's own
 steps or checks enforce — it travels because it is worth writing down once,
