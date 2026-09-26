@@ -72,6 +72,20 @@ for as long as it takes somebody to work out which instance they have been
 talking to. A recipe that says "use a non-default port" without that sentence
 gets overridden by the next person who finds the remap inconvenient.
 
+**The path a service holds its state at belongs to the image tag, not to the
+software, and a floating tag moves it under a volume that was correct last
+month.** Two tags of one database's current major, on the same day: with the
+volume mounted where every guide and every older compose file puts it, the
+floating major-only tag exited `1` at first boot on an empty volume —
+`there appears to be PostgreSQL data in: /var/lib/postgresql/data (unused
+mount/volume)` — while the pinned major.minor tag of the same major started
+and reported healthy against the identical file. Both images declare the same
+data directory internally; only one of them refuses the old mount point. So
+read the image's own documentation for where it keeps state when you fill in
+the volume, and re-read it when you move the tag, rather than copying the
+path out of the last project. Verify item 2 below is what catches this, and
+only if you run it with `-a`.
+
 **A CI service container is reached on the image's own port, not the host
 remap, and the comment saying so has to live in the workflow.** The remap
 exists only to dodge a collision on a developer machine; a job's service
@@ -98,10 +112,16 @@ handled.
 1. `docker compose -f docker/compose.yml config` exits `0` — it resolves and
    validates the file without starting anything.
 2. `docker compose -f docker/compose.yml up -d` followed by
-   `docker compose -f docker/compose.yml ps` shows every service `healthy`,
-   not merely `running`. A container that is up and not yet accepting
-   connections is the state that makes the next step flaky, and the check
-   above would not have caught it — `config` only proves the file parses.
+   `docker compose -f docker/compose.yml ps -a` shows every service
+   `healthy`, not merely `running`. A container that is up and not yet
+   accepting connections is the state that makes the next step flaky, and
+   the check above would not have caught it — `config` only proves the file
+   parses. Pass `-a`, and count the healthy rows against the number of
+   services rather than looking for an unhealthy one: a container that
+   started and exited is **absent** from the default listing, so the table
+   is empty, nothing reads as unhealthy, and a check phrased as "no service
+   is unhealthy" passes over a stack that is not running at all. That is
+   how the tag trap above presents.
 3. The published host port differs from the image's default. Check it, do
    not assume it: `docker compose -f docker/compose.yml port <service>
    <internal port>` prints the host mapping, and reading it back is what
