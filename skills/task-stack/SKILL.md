@@ -41,7 +41,8 @@ entry to done" case that the driver needed special code for cannot arise.
 ## Rules
 
 1. **Before touching code**, create `active/<id>.md` from
-   `templates/feature.md`.
+   `specs/tasks/templates/feature.md`; if that template is absent, write the
+   entry directly rather than treating the absence as a broken setup.
 
 2. **While working**, tick sub-steps in place. If the task is blocked, set
    `Status: blocked` and fill `Blockers:`.
