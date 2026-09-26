@@ -58,11 +58,22 @@ node driver.mjs sweep    # matrix sweep + accessibility scan
 `states` reads the same three variables and forces the error / empty / slow
 states in `main()`.
 
+## The sign-in path is isolated in one file
+
+Authentication is the one part of the driver genuinely shaped by the product
+it audits, so it lives entirely in [auth-adapter.mjs](auth-adapter.mjs): the
+personas map, the sign-in route, the session cookie name, the locale cookie
+name, the bearer-token localStorage key, and the cached-token probe endpoint.
+A project with a different auth flow rewrites that one file —
+`signIn(base, persona, password)` returning `{ token, cookie }`,
+`cookieNames()` returning `{ session, locale }`, and `bearerStorageKey()`
+returning a string — and touches nothing in `driver.mjs`.
+
 ## What the driver still assumes
 
-Past the routes and personas above, and past the sign-in path itself (which
-still hard-codes one product's auth flow), the driver carries assumptions
-from the product it was first written against:
+Past the routes and personas above, and past the sign-in path now isolated
+in the adapter, the driver still carries assumptions from the product it was
+first written against:
 
 - Two fixed locales, `ru` and `en`.
 - An `/api/v1/` API prefix.

@@ -11,8 +11,9 @@
 //
 // It still asserts nothing. It reports.
 import { chromium } from '@playwright/test';
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { signIn, cookieNames, bearerStorageKey } from './auth-adapter.mjs';
 // axe-core is often installed somewhere this file's own module resolution
 // cannot see — nested under a workspace package rather than hoisted to
 // where the driver runs from. AXE_PATH is the escape hatch for that case;
@@ -29,17 +30,11 @@ const BASE_HOST = new URL(BASE).hostname;
 const PASS_ENV = process.env.AUDIT_PASSWORD;
 const OUT = process.env.AUDIT_OUT ?? new URL('out2', import.meta.url).pathname;
 // The key the target app reads its color-mode preference from. Frameworks
-// disagree on this, so it is an override rather than a literal. The bearer
-// key below ('cs.web.bearer') is the target app's too, not this driver's own
-// — it is part of the sign-in path, which is Task 8's to generalise.
+// disagree on this, so it is an override rather than a literal.
 const COLOR_MODE_KEY = process.env.AUDIT_COLOR_MODE_KEY ?? 'color-mode';
 
 const PASS = PASS_ENV ?? 'AuditPass123!';
-const PERSONAS = {
-  admin: 'audit-admin@example.com',
-  learner: 'audit-learner@example.com',
-  empty: 'audit-empty@example.com',
-};
+const { session: SESSION_COOKIE, locale: LOCALE_COOKIE } = cookieNames();
 
 // CORE, ALL and PERSONA_NAMES all come from the project's own declared
 // surface — `## Audit routes` / `## Audit personas` in its CLAUDE.md, see
@@ -64,8 +59,9 @@ function requiredList(envVar, heading) {
 // else (one pass), so the run stays finishable.
 const CORE = requiredList('AUDIT_CORE', '## Audit routes');
 const ALL = requiredList('AUDIT_ALL', '## Audit routes');
-// The persona names the sweep iterates. `PERSONAS` above maps these to
-// sign-in credentials; keep the two in step when either changes.
+// The persona names the sweep iterates. auth-adapter.mjs's `PERSONAS` map
+// maps these to sign-in credentials; keep the two in step when either
+// changes.
 const PERSONA_NAMES = requiredList('AUDIT_PERSONAS', '## Audit personas');
 
 const VIEWPORTS = [
@@ -114,35 +110,7 @@ const PROBE = () => {
 };
 
 async function tokenFor(persona) {
-  const email = PERSONAS[persona];
-  const cacheFile = `${OUT}/../.auth-${persona}.json`;
-  try {
-    const c = JSON.parse(await readFile(cacheFile, 'utf8'));
-    const probe = await fetch(`${BASE}/api/v1/courses`, {
-      headers: { Authorization: `Bearer ${c.token}` },
-    });
-    // 429 means "too many requests", not "bad token" — the general throttler
-    // (60/min) fires during a sweep and would otherwise send us to sign-in,
-    // which has its own, stricter limiter.
-    if (probe.ok || probe.status === 429) return c;
-  } catch {
-    /* no cache */
-  }
-  const res = await fetch(`${BASE}/api/v1/auth/sign-in/email`, {
-    method: 'POST',
-    // Better Auth rejects a request whose Origin is absent-but-browser-shaped
-    // (undici sends Sec-Fetch-* without Origin) with MISSING_OR_NULL_ORIGIN.
-    headers: { 'Content-Type': 'application/json', Origin: BASE },
-    body: JSON.stringify({ email, password: PASS }),
-  });
-  if (!res.ok)
-    throw new Error(`sign-in(${persona}) HTTP ${res.status}: ${(await res.text()).slice(0, 160)}`);
-  const { token } = await res.json();
-  const raw = res.headers.getSetCookie?.().find((c) => c.startsWith('better-auth.session_token='));
-  const cookie = raw ? decodeURIComponent(raw.split(';')[0].split('=').slice(1).join('=')) : null;
-  const out = { token, cookie };
-  await writeFile(cacheFile, JSON.stringify(out), { mode: 0o600 });
-  return out;
+  return signIn(BASE, persona, PASS);
 }
 
 async function makeContext(browser, { token, cookie }, locale, theme, viewport) {
@@ -151,7 +119,7 @@ async function makeContext(browser, { token, cookie }, locale, theme, viewport) 
     ...(cookie
       ? [
           {
-            name: 'better-auth.session_token',
+            name: SESSION_COOKIE,
             value: cookie,
             domain: BASE_HOST,
             path: '/',
@@ -160,18 +128,18 @@ async function makeContext(browser, { token, cookie }, locale, theme, viewport) 
           },
         ]
       : []),
-    { name: 'i18n_locale', value: locale, domain: BASE_HOST, path: '/' },
+    { name: LOCALE_COOKIE, value: locale, domain: BASE_HOST, path: '/' },
   ]);
   await ctx.addInitScript(
-    ([t, th, key]) => {
+    ([t, th, bearerKey, colorModeKey]) => {
       try {
-        localStorage.setItem('cs.web.bearer', t);
-        localStorage.setItem(key, th);
+        localStorage.setItem(bearerKey, t);
+        localStorage.setItem(colorModeKey, th);
       } catch {
         /* private mode */
       }
     },
-    [token, theme, COLOR_MODE_KEY],
+    [token, theme, bearerStorageKey(), COLOR_MODE_KEY],
   );
   return ctx;
 }
