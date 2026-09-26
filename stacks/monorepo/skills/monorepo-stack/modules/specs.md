@@ -41,19 +41,43 @@ turns it into code.
    in a script string.
 
 3. **Extend `core`'s base config in the package's own `tsconfig.json`, with
-   one override.** The generator emits extension-less relative imports
-   between its own files (`from "./types.gen"`), which do not resolve under
-   the base config's `NodeNext`:
+   the overrides this generator's output actually needs.** Two of them, and
+   which you need depends on what your generator emitted, so run it first
+   (Step 4) and look:
+
+   **Only if the emitted imports are extension-less.** Some generators emit
+   `from "./types.gen"` between their own files, which does not resolve
+   under the base config's `NodeNext`; others emit `from "./types.gen.js"`,
+   which resolves fine and needs nothing. `grep -rhoE "from '\./[^']*'"
+   src/generated | sort -u` is the check — one look, and it decides whether
+   the block below belongs in your tree at all. Adding it when the output
+   does not need it is not free: it turns off `NodeNext` resolution
+   checking for the whole package, and the comment justifying it is then
+   describing something that never happened.
+
+   **Always.** Every file under `src/generated/` is written by a generator
+   that does not target `exactOptionalPropertyTypes`, which `core`'s base
+   config sets. On the output measured here that was twelve errors, all of
+   them `TS2379`, all inside the vendored HTTP runtime. Relax the flag for
+   this package rather than excluding the directory from the check: the
+   check is what catches a missing runtime dependency (Verify item 3), and
+   a package that typechecks nothing catches nothing.
 
    ```json
    {
      "extends": "../../tsconfig.base.json",
+     "include": ["src/**/*.ts", "<the generator's own config file>"],
      "compilerOptions": {
        "noEmit": true,
-       // Override, this package only: the generator emits extension-less
-       // relative imports between its own files, which NodeNext resolution
-       // rejects. Safe only because the bundle step below resolves them at
-       // build time — remove the bundler and this override starts lying.
+       // Always: src/generated/ is the generator's output and is not
+       // written against this flag. Relaxed here, not dropped from the
+       // base config, and not worked around by excluding the directory.
+       "exactOptionalPropertyTypes": false,
+       // Only if the generator emits extension-less relative imports,
+       // which NodeNext resolution rejects. Safe only because the bundle
+       // step below resolves them at build time — remove the bundler and
+       // this override starts lying. Delete both lines if your generator
+       // emits resolvable specifiers.
        "module": "ESNext",
        "moduleResolution": "Bundler"
      }
@@ -105,19 +129,37 @@ turns it into code.
      "main": "./dist/index.js",
      "types": "./dist/index.d.ts",
      "exports": {
-       ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+       ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+       "./openapi.yaml": "./openapi/openapi.yaml"
      },
-     "files": ["dist"]
+     "files": ["dist", "openapi"]
    }
    ```
+
+   **Export the document as well as the code, and list its directory in
+   `files`.** `backend`'s runtime validator is mounted against this
+   package's document, resolved through this package's name — and an
+   `exports` map naming only `dist` makes every other path in the package
+   unreachable, including the contract itself. There is no build error and
+   no type error: the workspace builds, typechecks and lints clean, and the
+   server dies at boot with `ERR_PACKAGE_PATH_NOT_EXPORTED`. Nothing in
+   either module's `## Verify` catches it, which is why it is written here
+   rather than left to be discovered.
 
    `dist/` goes in the package's own `.gitignore`, while the **generated
    sources under `src/generated/` stay committed**. The generated source is
    the reviewable artefact; the bundle is not.
 
-6. **Declare the generated client's runtime dependency explicitly.** The
-   generator emits imports of its own HTTP runtime and does not add that
-   runtime to `package.json` — add it to `dependencies` by hand, unpinned.
+6. **Declare the generated client's runtime dependency explicitly, if it has
+   one.** Generators split two ways here, and the split decides this whole
+   step: some emit an import of a separately published HTTP runtime without
+   adding it to `package.json`, and some vendor that runtime into the output
+   directory and import nothing. `grep -rhoE "from '[^'.][^']*'" src/generated
+   | sort -u` prints one line per non-relative import the output actually
+   makes; every one of them belongs in `dependencies`, by hand and unpinned,
+   and an empty result means this step has nothing to do. Run the grep rather
+   than assuming either shape — the last trap but one is what an undeclared
+   one costs, and it is not paid until a clean install.
 
 7. **Commit generated output in its own commit.** A reviewer then reads the
    contract change without the derived diff, and a regeneration that changes
@@ -133,9 +175,14 @@ turns it into code.
      shared `required` fields promise less than the type union built from
      it, and the runtime validator enforces the schema, not the union
      (Traps below).
-   - A `default` error response on every operation. Without one, a response
-     status with no schema makes the response validator throw *inside* the
-     response, after the error filter has already run.
+   - A `default` error response on every operation, **alongside** the
+     explicit 4xx entries the operation really has, not instead of them.
+     Without a `default`, a response status with no schema makes the
+     response validator throw *inside* the response, after the error filter
+     has already run; and the linter's own "must have a 4xx" rule does not
+     accept `default` in place of one, so an operation carrying only
+     `default` warns. Declare both and the rule set stays quiet except
+     where the third trap below says it should not.
    - A `summary` on every operation. It becomes the docstring on every
      generated client method (Traps below).
 
@@ -205,9 +252,9 @@ green gate over a broken import graph. The override is correct *only*
 alongside a real bundle step, and the tsconfig has to say so in a comment or
 the next person removes the bundler and keeps the override.
 
-**Nothing catches a missing runtime dependency until a clean install.** The
-generated client imports an HTTP runtime the generator does not add to
-`package.json`. Typecheck passes, the import resolves through the workspace's
+**Nothing catches a missing runtime dependency until a clean install**, on the
+generators that have one. The generated client imports an HTTP runtime the
+generator does not add to `package.json`. Typecheck passes, the import resolves through the workspace's
 hoisted modules, every developer machine is fine, and it fails on the first
 install that starts from nothing — which is CI, or a new contributor,
 whichever comes first.
@@ -264,7 +311,14 @@ Each of these has an answer that cannot be produced by accident:
    --frozen-lockfile` — `pnpm -w exec turbo run build typecheck` exits `0`.
    This is the only check that catches the undeclared runtime dependency, and
    running it on a warm tree proves nothing.
-4. `git ls-files packages/specs/src/generated` prints at least one path.
+4. The document is reachable through the package's own name, from another
+   package: `node -e "require('node:module').createRequire('<the consuming
+   package>/x').resolve('<scope>/specs/openapi.yaml')"` prints a path. This
+   is the one check that fails on the `exports` mistake in Step 5, and it
+   has to be run from a consumer rather than from inside the package, where
+   the path resolves off disk and proves nothing. Every other gate is green
+   while this is broken.
+5. `git ls-files packages/specs/src/generated` prints at least one path.
    Check this before trusting the next line — an empty result means the
    generated sources were never committed, or are gitignored by accident
    (easy to do: `core`'s own ESLint and Prettier steps tell the reader to
