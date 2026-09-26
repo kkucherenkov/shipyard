@@ -14,6 +14,15 @@ failures=0
 # Build a one-module stack tree in $1. $2 is the SKILL.md body, $3 the body of
 # modules/sample.md. Frontmatter is fixed and valid so a case only ever
 # exercises the rule it names.
+#
+# sample.md gets whichever of R3's six required headings $3 does not already
+# declare, appended as inert filler, and SKILL.md gets a table row naming it.
+# Every R1/R2/R5/R6/R7 case below drops its tested snippet into this same
+# modules/sample.md, and R3/R4 (added by Task 2) both scan modules/ regardless
+# of which case put a file there — with no filler and no matching row, adding
+# R3/R4 would fail all of them on something they were never testing. Only the
+# R5 traps cases declare "## Traps" themselves; the loop skips a heading
+# module_body already has so that one is not duplicated.
 make_stack() {
   root=$1
   skill_body=$2
@@ -24,10 +33,76 @@ make_stack() {
     printf 'name: monorepo-stack\n'
     printf 'description: Use when scaffolding a monorepo or adding a module.\n'
     printf -- '---\n\n'
-    printf '# Monorepo stack\n\n%s\n' "$skill_body"
+    printf '# Monorepo stack\n\n## The modules\n\n'
+    printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+    printf '| [`sample`](modules/sample.md) | something | nothing |\n\n'
+    printf '%s\n' "$skill_body"
   } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
-  printf '# sample\n\n%s\n' "$module_body" \
-    > "$root/stacks/monorepo/skills/monorepo-stack/modules/sample.md"
+  {
+    printf '# sample\n\n%s\n\n' "$module_body"
+    for heading in '## Preconditions' '## Steps' '## What the consumer decides' \
+      '## Traps' '## Declining this module' '## Verify'; do
+      printf '%s\n' "$module_body" | grep -qxF "$heading" && continue
+      printf '%s\n\nFiller.\n\n' "$heading"
+    done
+  } > "$root/stacks/monorepo/skills/monorepo-stack/modules/sample.md"
+}
+
+# Build a stack whose SKILL.md declares modules $2 (space separated) and whose
+# modules/ directory contains files for $3 (space separated). The two lists
+# differ in the R4 cases and match everywhere else.
+make_graph() {
+  root=$1
+  mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
+  {
+    printf -- '---\nname: monorepo-stack\n'
+    printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+    printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+    printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+    for m in $2; do
+      printf '| [`%s`](modules/%s.md) | something | nothing |\n' "$m" "$m"
+    done
+  } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+  for m in $3; do
+    {
+      printf '# %s\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n' "$m"
+      printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+      printf '## Declining this module\n\nNothing reaches into it.\n\n'
+      printf '## Verify\n\nIt exists.\n'
+    } > "$root/stacks/monorepo/skills/monorepo-stack/modules/$m.md"
+  done
+}
+
+# want=$1, label=$2, msg=$3 (a substring the FAIL output must contain when
+# want=1; ignored when empty) — same contract as expect() below, for the same
+# reason given in its own comment: an R4 case that names a table row with no
+# file also trips R7's dangling-link check on that same row, so the exit code
+# alone would not prove R4 (rather than R7) is what fired.
+# tabled modules=$4, files present=$5.
+expect_graph() {
+  want=$1
+  label=$2
+  msg=$3
+  root=$(mktemp -d)
+  make_graph "$root" "$4" "$5"
+  out=$(sh "$subject" "$root" 2>&1 >/dev/null)
+  got=$?
+  rm -rf "$root"
+  if [ "$got" -ne "$want" ]; then
+    printf 'FAIL want=%s got=%s %s\n' "$want" "$got" "$label" >&2
+    failures=$((failures + 1))
+    return
+  fi
+  if [ -n "$msg" ]; then
+    case $out in
+      *"$msg"*) ;;
+      *)
+        printf 'FAIL %s: exit code matched but message did not contain "%s": %s\n' \
+          "$label" "$msg" "$out" >&2
+        failures=$((failures + 1))
+        ;;
+    esac
+  fi
 }
 
 # want=$1, label=$2, msg=$3 (a substring the FAIL output must contain when
@@ -231,6 +306,43 @@ expect 1 'rejects a dangling relative link' 'dangling link' \
   '' 'See [the core module](modules/core.md).'
 expect 0 'accepts a link that resolves' '' \
   '' 'See [the sample module](sample.md).'
+
+# --- R4: the table and the directory are the same set ---
+expect_graph 0 'table and directory agree' '' 'core docker' 'core docker'
+expect_graph 1 'table names a module with no file' 'tabled only: docker' \
+  'core docker' 'core'
+expect_graph 1 'directory holds a module the table omits' 'present only: docker' \
+  'core' 'core docker'
+
+# --- R3: every module file carries the six headings ---
+missing_decline=$(mktemp -d)
+mkdir -p "$missing_decline/stacks/monorepo/skills/monorepo-stack/modules"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md) | a workspace | nothing |\n'
+} > "$missing_decline/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+{
+  printf '# core\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n'
+  printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+  printf '## Verify\n\nIt exists.\n'
+} > "$missing_decline/stacks/monorepo/skills/monorepo-stack/modules/core.md"
+out=$(sh "$subject" "$missing_decline" 2>&1 >/dev/null)
+got=$?
+rm -rf "$missing_decline"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s a module file with no "## Declining this module"\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+case $out in
+  *'missing required heading: ## Declining this module'*) ;;
+  *)
+    printf 'FAIL a module file with no "## Declining this module": message did not name the reason: %s\n' "$out" >&2
+    failures=$((failures + 1))
+    ;;
+esac
 
 if [ "$failures" -gt 0 ]; then
   printf '%s failing case(s)\n' "$failures" >&2

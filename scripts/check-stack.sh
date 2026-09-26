@@ -143,6 +143,41 @@ done
 set +f
 IFS=$oldifs
 
+# R3. Every module file carries the same six headings, in any file, spelled the
+# same way. The one that earns this rule is "## Declining this module": a module
+# whose files are reached by another module's script cannot be omitted without
+# editing that other module, and the only way to find out is to make somebody
+# write down what a decline removes. A module file that cannot answer has a
+# seam in it.
+skill_dir="$stack_root/monorepo/skills/monorepo-stack"
+if [ -d "$skill_dir/modules" ]; then
+  for m in "$skill_dir"/modules/*.md; do
+    [ -e "$m" ] || continue
+    for heading in '## Preconditions' '## Steps' '## What the consumer decides' \
+      '## Traps' '## Declining this module' '## Verify'; do
+      grep -qxF "$heading" "$m" || fail "$m" "missing required heading: $heading"
+    done
+  done
+
+  # R4. The module table in SKILL.md and the files under modules/ are the same
+  # set. A table row with no file sends a reader to a page that does not exist;
+  # a file with no row is a module nobody can find, which is the same as not
+  # having written it.
+  tabled=$(grep -oE '\(modules/[a-z-]+\.md\)' "$skill_dir/SKILL.md" 2>/dev/null \
+    | sed 's|(modules/||; s|\.md)||' | sort -u)
+  present=$(find "$skill_dir/modules" -name '*.md' -exec basename {} .md \; | sort -u)
+  if [ "$tabled" != "$present" ]; then
+    # Process substitution (<(...)) is not POSIX; the runner's /bin/sh is not
+    # guaranteed to be bash, so the two sides go through temp files instead.
+    t=$(mktemp); p=$(mktemp)
+    printf '%s\n' "$tabled" > "$t"; printf '%s\n' "$present" > "$p"
+    only_tabled=$(grep -vxF -f "$p" "$t" | tr '\n' ' ')
+    only_present=$(grep -vxF -f "$t" "$p" | tr '\n' ' ')
+    rm -f "$t" "$p"
+    fail "$skill_dir" "module table and modules/ disagree — tabled only: ${only_tabled:-none}; present only: ${only_present:-none}"
+  fi
+fi
+
 # R6. No pnpm script the recipe never tells anyone to create. The failure this
 # catches is documented rather than imagined: a consumer's own docs described a
 # three-command pipeline of which one command had never existed in that
