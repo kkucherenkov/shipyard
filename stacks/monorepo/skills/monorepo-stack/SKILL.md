@@ -108,3 +108,21 @@ Adding a module in month six is this same procedure run again for that one
 module. It is not a second plugin and not a migration: the preconditions in step
 2 exist precisely so a module can be installed into a workspace that has been
 running for months.
+
+## Templates
+
+Three files travel as templates rather than as instructions, because their
+correctness does not expire with a major version.
+
+| Template | Written to | When |
+| --- | --- | --- |
+| [`claude-md-block.md`](../../templates/claude-md-block.md) | between `<!-- STACK:BEGIN -->` and `<!-- STACK:END -->` in the project's `CLAUDE.md` | after every module install, rewriting only that region |
+| [`docs/handbook.md`](../../templates/docs/handbook.md) | `docs/handbook.md` (or wherever the project keeps convention docs) | once, with `backend` |
+| [`docs/testing.md`](../../templates/docs/testing.md) | `docs/testing.md` | once, with the first module that adds tests |
+
+Two more — a design-system document and an i18n document — belong to modules
+this plugin does not yet have, and are absent rather than shipped empty.
+
+Delete from each template every section whose module the project declined, and
+replace every `<PLACEHOLDER>`. `grep -n '<[A-Z_ ]*>' <file>` printing nothing is
+the check.
