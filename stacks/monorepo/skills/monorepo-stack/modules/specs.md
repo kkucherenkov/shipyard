@@ -31,10 +31,14 @@ turns it into code.
            detail: { type: string }
    ```
 
-2. **Add the linter and the generator as dev dependencies** — a spec linter
-   and an OpenAPI-to-TypeScript generator — by name, and let the package
-   manager resolve their versions. Do not write a version into the manifest
-   by hand.
+2. **Add the linter, the generator, and a bundler as dev dependencies** — a
+   spec linter, an OpenAPI-to-TypeScript generator, and a bundler able to
+   emit type declarations alongside its output — by name, and let the
+   package manager resolve their versions. Do not write a version into the
+   manifest by hand. All three are load-bearing: the bundle step in Step 4,
+   the tsconfig override in Step 3, and Verify item 2's `--dts` output all
+   depend on the bundler existing as a real dependency, not just as a name
+   in a script string.
 
 3. **Extend `core`'s base config in the package's own `tsconfig.json`, with
    one override.** The generator emits extension-less relative imports
@@ -119,13 +123,21 @@ turns it into code.
    contract change without the derived diff, and a regeneration that changes
    nothing shows up as an empty commit rather than as noise inside a feature.
 
-8. **Write four rules into the document itself**, as comments beside the
-   schema each one governs. The Traps below carry the concrete failure behind
-   each one:
-   - `additionalProperties: false` on every request body.
-   - Split a variant type by its discriminator with `oneOf`.
-   - A `default` error response on every operation.
-   - A `summary` on every operation.
+8. **Write four rules into the document itself**, as a comment beside the
+   schema each one governs — each with the failure it prevents, not just the
+   rule:
+   - `additionalProperties: false` on every request body. JSON Schema
+     defaults to open, so a schema with a full `required` list still accepts
+     any extra field — mass assignment wearing the look of a closed schema.
+   - Split a variant type by its discriminator with `oneOf`. A flat schema's
+     shared `required` fields promise less than the type union built from
+     it, and the runtime validator enforces the schema, not the union
+     (Traps below).
+   - A `default` error response on every operation. Without one, a response
+     status with no schema makes the response validator throw *inside* the
+     response, after the error filter has already run.
+   - A `summary` on every operation. It becomes the docstring on every
+     generated client method (Traps below).
 
 9. **Write the ordering rule into the project's `CLAUDE.md` stack block.**
    One sentence: the contract changes before the code that reads it. The
@@ -179,7 +191,11 @@ idiom, and the generator here emits extension-less relative imports (`from
 itself — the *consumer* does, under its own module resolution — and a server
 and a CLI both compiling under `NodeNext`, where extension-less relative
 imports do not resolve, fail at once and neither can fix it. The bundler
-resolves them at build time and the bundle is all any consumer imports.
+resolves them at build time and the bundle is all any consumer imports. The
+evidence above is this generator's own — a generator that emitted
+resolvable specifiers would not hit this particular failure — but the
+export-built-output rule holds regardless, so that swapping generators is
+never quietly taken as license to skip it.
 
 **Setting `moduleResolution: "Bundler"` inside the generating package looks
 like the fix and is not.** It turns that package's own typecheck green and
@@ -197,9 +213,10 @@ install that starts from nothing — which is CI, or a new contributor,
 whichever comes first.
 
 **Never write a pipeline step the project has no script for.** This
-project's predecessor documented a three-command pipeline copied from
-another repository where all three existed; here the middle one never had.
-It was found when somebody ran the documented line and got a missing-script
+recipe's own source project once documented a three-command pipeline copied
+from a different repository, where all three scripts existed; in the source
+project itself, the middle one never existed. It was found when somebody ran
+the documented line and got a missing-script
 error, which is the cheap version of this failure. The expensive version is
 a recipe that tells a new project to run three commands of which one has
 never existed anywhere, and the reader who hits it cannot tell a typo from a
@@ -221,10 +238,10 @@ A project with no wire contract declines it. Two other modules name it in
   document, and typing its request and response bodies from the generated
   client's types instead of hand-written ones. Everything else `backend`
   does — its configuration class, its error filter, its write ordering, its
-  schema guidance — is independent of this module and stays. Say which of
-  the two steps you removed in the project's `CLAUDE.md`, because a reader
-  who finds no validator mounted will otherwise assume it was forgotten
-  rather than declined on purpose.
+  schema guidance — is independent of this module and stays. Both steps go
+  together, not one or the other — name both, by name, in the project's
+  `CLAUDE.md`, because a reader who finds no validator mounted will
+  otherwise assume it was forgotten rather than declined on purpose.
 
 Nothing in this module emits a file into another module's directory, and it
 generates no client the project did not ask for. That is what makes both
@@ -233,8 +250,12 @@ somebody else's.
 
 ## Verify
 
+Each of these has an answer that cannot be produced by accident:
+
 1. `pnpm spec:validate` exits `0`, with any surviving warnings explained in
-   the document.
+   the document. This proves the document itself is well-formed; it proves
+   nothing about the generated client, which is what the next three items
+   check.
 2. `pnpm -w exec turbo run build` produces `packages/specs/dist/index.js` and
    `packages/specs/dist/index.d.ts`. Check for both files by name; a bundler
    that emitted JavaScript and no declarations passes a build and breaks
@@ -243,6 +264,13 @@ somebody else's.
    --frozen-lockfile` — `pnpm -w exec turbo run build typecheck` exits `0`.
    This is the only check that catches the undeclared runtime dependency, and
    running it on a warm tree proves nothing.
-4. `git status --short packages/specs` after `pnpm spec:codegen` shows either
-   no change or only files under `src/generated/`. Anything else means
-   codegen is writing outside its own output directory.
+4. `git ls-files packages/specs/src/generated` prints at least one path.
+   Check this before trusting the next line — an empty result means the
+   generated sources were never committed, or are gitignored by accident
+   (easy to do: `core`'s own ESLint and Prettier steps tell the reader to
+   ignore "any generated directory," and this is one), and in that state the
+   next check goes green for exactly the wrong reason. Only once this passes
+   does `git status --short packages/specs` after `pnpm spec:codegen`
+   showing no change, or only files under `src/generated/`, mean what it
+   claims to mean. Anything else means codegen is writing outside its own
+   output directory.
