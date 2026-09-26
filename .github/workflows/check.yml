@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: sh scripts/check-skills.sh
       - run: sh scripts/check-skills.test.sh
       - run: sh scripts/check-stack.sh
