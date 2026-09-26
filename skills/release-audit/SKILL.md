@@ -43,12 +43,40 @@ report whose gaps are invisible.
 ## Running it
 
 [driver.mjs](driver.mjs) is the harness. It asserts nothing — it writes a
-report and a screenshot per combination.
+report and a screenshot per combination. It carries no built-in route or
+persona list: `AUDIT_CORE`, `AUDIT_ALL` and `AUDIT_PERSONAS` are required,
+each read from `## Audit routes` / `## Audit personas`, and the driver fails
+fast if any is unset rather than falling back to a guessed one.
 
 ```sh
+AUDIT_CORE="<the surfaces a real user meets constantly, from ## Audit routes>" \
+AUDIT_ALL="<every route worth one pass, from ## Audit routes>" \
+AUDIT_PERSONAS="<the persona names, from ## Audit personas>" \
 node driver.mjs sweep    # matrix sweep + accessibility scan
-node driver.mjs states   # forced error / empty / slow states
 ```
+
+`states` reads the same three variables and forces the error / empty / slow
+states in `main()`.
+
+## What the driver still assumes
+
+Past the routes and personas above, and past the sign-in path itself (which
+still hard-codes one product's auth flow), the driver carries assumptions
+from the product it was first written against:
+
+- Two fixed locales, `ru` and `en`.
+- An `/api/v1/` API prefix.
+- Two endpoints, `/admin/has-users` and `/admin/instance`, named explicitly
+  so the `states` mode's mock does not fake them.
+- An `{ items, total }` response envelope for the empty-payload state.
+- A fixed 600ms settle wait after navigation, before probing the page.
+- `AUDIT_COLOR_MODE_KEY` defaults to `color-mode`, and the theme-detection
+  probe reads `data-theme` or a `dark` class — both assume one theming
+  convention.
+
+A project shaped differently in any of these needs to edit the driver
+itself; declaring `## Audit routes` / `## Audit personas` does not reach
+them.
 
 ## Traps
 

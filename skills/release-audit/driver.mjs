@@ -12,24 +12,26 @@
 // It still asserts nothing. It reports.
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-// axe-core is a dependency of packages/ui, not hoisted to the workspace root,
-// so resolution from this directory fails. Take the store path directly.
-// axe-core is a dependency of packages/ui, not hoisted to the workspace root,
-// so plain resolution from wherever this runs will fail. Point AXE_PATH at the
-// store path, or let this find it under the repo.
-const AXE_PATH =
-  process.env.AXE_PATH ??
-  new URL(
-    '../../../node_modules/.pnpm/axe-core@4.11.3/node_modules/axe-core/axe.min.js',
-    import.meta.url,
-  ).pathname;
+import { createRequire } from 'node:module';
+// axe-core is often installed somewhere this file's own module resolution
+// cannot see — nested under a workspace package rather than hoisted to
+// where the driver runs from. AXE_PATH is the escape hatch for that case;
+// the default is plain module resolution, not a path baked in for one
+// project's dependency layout.
+const require = createRequire(import.meta.url);
+const AXE_PATH = process.env.AXE_PATH ?? require.resolve('axe-core/axe.min.js');
 
 const BASE = process.env.AUDIT_BASE ?? 'http://localhost:8090';
+// The cookies below are scoped by hostname, not by BASE as a whole — derive
+// it, or pointing AUDIT_BASE anywhere but localhost drops both cookies
+// silently and the run lands in the sign-in-redirect failure mode below.
+const BASE_HOST = new URL(BASE).hostname;
 const PASS_ENV = process.env.AUDIT_PASSWORD;
 const OUT = process.env.AUDIT_OUT ?? new URL('out2', import.meta.url).pathname;
 // The key the target app reads its color-mode preference from. Frameworks
-// disagree on this, so it is an override rather than a literal, unlike the
-// bearer-token key below, which is this driver's own and never varies.
+// disagree on this, so it is an override rather than a literal. The bearer
+// key below ('cs.web.bearer') is the target app's too, not this driver's own
+// — it is part of the sign-in path, which is Task 8's to generalise.
 const COLOR_MODE_KEY = process.env.AUDIT_COLOR_MODE_KEY ?? 'color-mode';
 
 const PASS = PASS_ENV ?? 'AuditPass123!';
@@ -39,37 +41,32 @@ const PERSONAS = {
   empty: 'audit-empty@example.com',
 };
 
-// Full matrix on the surfaces a real user meets constantly; one pass over the
-// rest, so the run stays finishable.
-// Full matrix here; every other surface gets one pass. Override with
-// AUDIT_CORE / AUDIT_ALL (comma-separated) when the routes change.
-const CORE = (process.env.AUDIT_CORE ?? '/,/browse,/settings').split(',');
-// `ALL` used to be a bare literal while the comment above promised an
-// AUDIT_ALL override. Auditing 1.9.0 hit that: two new surfaces were passed in
-// AUDIT_ALL, the run reported 14 routes instead of 16, and the release's only
-// new screens went unaudited while the report looked complete.
-const ALL = process.env.AUDIT_ALL?.split(',') ?? [
-  '/',
-  '/browse',
-  '/search',
-  '/settings',
-  // `/libraries` used to sit here. The app has no such route — it is
-  // `/admin/libraries`, already listed below — so every run audited the
-  // app's default 404 page and filed its empty <title> as a
-  // `document-title` violation.
-  // Four runs' worth of that finding were about the error page, not a screen.
-  '/flashcards/review',
-  '/courses/IUJgcSn2VoE9cPFTG63Lw',
-  '/courses/IUJgcSn2VoE9cPFTG63Lw/edit',
-  '/courses/IUJgcSn2VoE9cPFTG63Lw/lessons/VzjmQ4VtlzJzXp_k-fj4m',
-  '/admin',
-  '/admin/libraries',
-  '/admin/users',
-  '/admin/permissions',
-  '/admin/backups',
-  '/admin/identify-tasks',
-  '/admin/scrapers',
-];
+// CORE, ALL and PERSONA_NAMES all come from the project's own declared
+// surface — `## Audit routes` / `## Audit personas` in its CLAUDE.md, see
+// SKILL.md — never from a list baked into this file. A silent fallback here
+// is the exact failure this method exists to catch: a route list once
+// dropped two new screens while the run still reported a route count as if
+// nothing were missing, and a stale route's 404 page got filed as a real
+// screen's defect for several runs running. Refuse to guess; fail fast.
+function requiredList(envVar, heading) {
+  const raw = process.env[envVar];
+  if (!raw) {
+    throw new Error(
+      `${envVar} is required (comma-separated), set from \`${heading}\` in ` +
+        "the project's CLAUDE.md — see SKILL.md. Refusing to fall back to a " +
+        'built-in list.',
+    );
+  }
+  return raw.split(',').filter(Boolean);
+}
+
+// The surfaces a real user meets constantly (full matrix) and everything
+// else (one pass), so the run stays finishable.
+const CORE = requiredList('AUDIT_CORE', '## Audit routes');
+const ALL = requiredList('AUDIT_ALL', '## Audit routes');
+// The persona names the sweep iterates. `PERSONAS` above maps these to
+// sign-in credentials; keep the two in step when either changes.
+const PERSONA_NAMES = requiredList('AUDIT_PERSONAS', '## Audit personas');
 
 const VIEWPORTS = [
   { name: '1440', width: 1440, height: 900 },
@@ -156,14 +153,14 @@ async function makeContext(browser, { token, cookie }, locale, theme, viewport) 
           {
             name: 'better-auth.session_token',
             value: cookie,
-            domain: 'localhost',
+            domain: BASE_HOST,
             path: '/',
             httpOnly: true,
             sameSite: 'Lax',
           },
         ]
       : []),
-    { name: 'i18n_locale', value: locale, domain: 'localhost', path: '/' },
+    { name: 'i18n_locale', value: locale, domain: BASE_HOST, path: '/' },
   ]);
   await ctx.addInitScript(
     ([t, th, key]) => {
@@ -286,9 +283,9 @@ async function main() {
       }
       await ctx.close();
     }
-    // 2) The matrix the first run never touched: three personas, both locales,
-    //    both themes, on the surfaces everyone meets.
-    for (const persona of ['admin', 'learner', 'empty']) {
+    // 2) The matrix the first run never touched: every declared persona, both
+    //    locales, both themes, on the surfaces everyone meets.
+    for (const persona of PERSONA_NAMES) {
       const auth = await tokenFor(persona);
       for (const locale of ['ru', 'en']) {
         for (const theme of ['dark', 'light']) {

@@ -86,6 +86,9 @@ expect 1 'NAS alone, with no other source-project noun, fails' \
 expect 1 'a bare card id alone, with no other source-project noun, fails' \
   'Use when card E15-F03 needs closing out.' "$good_trap"
 
+expect 1 'packages/ui alone, with no other source-project noun, fails' \
+  'Use when a component under packages/ui needs a story.' "$good_trap"
+
 # A missing name: can't go through make_skill, which always writes one — this
 # case constructs its own SKILL.md so the frontmatter simply omits the key.
 root=$(mktemp -d)
@@ -150,9 +153,9 @@ fi
 # Review Focus 2: a skill that reads a CLAUDE.md heading must say what it does
 # when the heading is absent. A skill that omits this will be followed into a
 # deploy against nothing, which reports success.
-for s in deploy-verify issue-bookkeeping ci-gates; do
+for s in deploy-verify issue-bookkeeping ci-gates release-audit; do
   f="$here/../skills/$s/SKILL.md"
-  if [ -f "$f" ] && grep -qiE 'if that heading is absent' "$f"; then
+  if [ -f "$f" ] && grep -qiE 'if (that|either) heading is absent' "$f"; then
     printf 'ok   %s states what to do when its heading is absent\n' "$s"
   else
     printf 'FAIL %s does not state what to do when its heading is absent\n' "$s" >&2

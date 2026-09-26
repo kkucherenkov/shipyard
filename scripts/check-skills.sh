@@ -33,7 +33,7 @@ for skill in "$root"/skills/*/SKILL.md; do
   fi
 
   # 3. No nouns from the repository these procedures were extracted from.
-  if grep -rqiE 'course.?shelf|@app/|apps/(backend|web|mobile)|packages/specs|centrifugo|prisma|nestjs|nuxt|dockge|\bnas\b|\bE[0-9]{2}-F[0-9]{2}\b' "$dir"; then
+  if grep -rqiE 'course.?shelf|@app/|apps/(backend|web|mobile)|packages/(specs|ui)|centrifugo|prisma|nestjs|nuxt|dockge|\bnas\b|\bE[0-9]{2}-F[0-9]{2}\b' "$dir"; then
     fail "$skill" 'carries a noun from the source project'
   fi
 
