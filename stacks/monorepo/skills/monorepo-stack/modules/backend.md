@@ -25,15 +25,25 @@
    not hand-write the scaffold from memory of what it emits — a generator's
    output changes between its own major versions, and a hand-copied guess is
    exactly the kind of frozen file this recipe exists not to be. The
-   generator has no idea it just ran inside a workspace: delete whatever
-   per-package lint configuration it wrote (`core` configures lint once, at
-   the workspace root, and a second config next to it is a second, competing
-   answer to the same question) and rewrite the tsconfig pair it scaffolded
-   to `core`'s own split — `tsconfig.json` extending
-   `../../tsconfig.base.json` with everything included and `noEmit: true`;
-   `tsconfig.build.json` extending that, with `rootDir`/`outDir` set and
-   `include` re-declared as `["src"]` — since a freshly generated tsconfig
-   extends nothing of this workspace's.
+   generator has no idea it just ran inside a workspace: delete every
+   per-package **lint and formatter** configuration it wrote (`core`
+   configures both once, at the workspace root, and a second config next to
+   it is a second, competing answer to the same question — today's scaffold
+   writes one of each, under whichever names its current defaults use), and
+   rewrite the tsconfig pair it scaffolded to `core`'s own split —
+   `tsconfig.json` extending `../../tsconfig.base.json` with everything
+   included and `noEmit: true`; `tsconfig.build.json` extending that, with
+   `rootDir`/`outDir` set and `include` re-declared as `["src"]` — since a
+   freshly generated tsconfig extends nothing of this workspace's.
+
+   Rewrite it, do not replace it wholesale: **carry the decorator options
+   the generator set into the new file.** `core`'s base config has none —
+   it is shared with packages that use no decorators — so a literal rewrite
+   to "extends the base, plus `noEmit`" silently drops
+   `emitDecoratorMetadata` and `experimentalDecorators`, and the failure
+   that produces is the one in the metadata trap below: nothing throws at
+   build time, and a constructor parameter comes back `undefined` inside
+   the handler that uses it.
 
    Give the package the scripts every step from here on assumes exist,
    replacing whatever the generator wrote:
@@ -44,11 +54,17 @@
        "build": "tsc -p tsconfig.build.json",
        "typecheck": "tsc --noEmit",
        "test": "vitest run",
-       "lint": "eslint .",
-       "postinstall": "<the ORM's client-generation command>"
+       "lint": "eslint ."
      }
    }
    ```
+
+   No `postinstall` yet. It generates the ORM's client and belongs in Step
+   8, written in the same edit that installs the ORM's CLI — write it here
+   and the *next* `pnpm add` into this package runs it, finds no CLI, and
+   aborts the install (`sh: line 1: <the CLI>: command not found`,
+   `ELIFECYCLE`). Every dependency this module adds from here on goes
+   through that command, so the whole module stops on its second step.
 
    `vitest` is this recipe's test runner for every package that has tests;
    add it as a dev dependency here, since nothing `core` installs brings a
@@ -106,8 +122,11 @@
    compile error in the commit that caused it.
 
 7. **Install a global exception filter** that reads the status off either a
-   framework exception or a plain `{ status, message }` object, and renders
-   the error schema the contract declares. The second shape is only ever
+   framework exception or **anything else carrying a numeric `status`**, and
+   renders the error schema the contract declares. Detect that second shape
+   by the `status` alone. Do not exclude `Error` instances from it: the
+   trap below explains what that costs, and it costs it on the first
+   request. The second shape is only ever
    thrown by the contract validator — the `(Only with specs.)` step above
    that mounts it — so without `specs` that branch simply never fires; the
    filter itself is not one of this module's two removable steps, and stays
@@ -117,8 +136,14 @@
    wrong in two specific ways that pass review.
 
 8. **Add the ORM**, with its CLI and its client **exact-pinned to the same
-   version** — not a caret on either. Wire `prisma generate` (or the ORM's
-   equivalent) to the package's own `postinstall`, never to a CI step.
+   version** — not a caret on either — and pick that version from the
+   *client's* release channel rather than from whatever each half's default
+   tag resolves to. Check the channel before installing: the two halves are
+   published separately and their default tags can sit on different majors,
+   one of them a release candidate. Then wire the client-generation command
+   to the package's own `postinstall`, in this step, never to a CI step —
+   and make sure it does not need a connection string to run (the trap on
+   that below).
 
 9. **Put whatever the synchronisation design needs on every synchronised
    table** — a version counter, per-field timestamps, a monotonic sequence, a
@@ -171,14 +196,20 @@ was found a task late, after a change to the ordering made every POST answer
 400 and the task that introduced it verified two GET requests and saw
 nothing.
 
-**The contract validator rejects by throwing a plain object, not a framework
-exception.** It throws `{ status, message }`. The default exception filter
-reads the status only off its own exception type, so every validator
-rejection — a 400 on a bad body, a 404 on an undeclared route — surfaces as
-an unhandled 500. A filter that reads the status off either shape is
-required, and its body must match the error schema the contract declares, or
-the first client to read an error gets a shape the contract does not
-describe.
+**The contract validator rejects with something the framework's own filter
+does not recognise, and "it is a plain object" is the wrong way to
+recognise it.** The default exception filter reads the status only off its
+own exception type, so every validator rejection — a 400 on a bad body, a
+404 on an undeclared route — surfaces as an unhandled 500. That much is
+stable. What is not stable is the shape: the validator used here throws
+named `Error` subclasses (`Bad Request`, `Not Found`) that carry a numeric
+`status`, and a filter written against "a plain `{ status, message }`, and
+specifically not an `Error`" therefore matches none of them. Measured on a
+live server, three for three: a body with an extra property, a variant
+missing its discriminated field, and an undeclared route all came back
+`500` with `Internal Server Error` in the body — and the 400s were logged
+at `error`, with stacks. Test for the numeric `status` and nothing else,
+and read the trap below before deciding what the response may then say.
 
 **The filter must distinguish a 4xx message from a 5xx one, and the defect
 that proves it recurs in every codebase that writes one.** The rule: a 4xx
@@ -241,6 +272,27 @@ Adding them one command at a time (`pnpm add` for the client, then
 `pnpm add -D` for the CLI) can itself leave them a patch apart if a new
 release lands between the two calls; check both entries after, and the tell
 is an asymmetry inside one file — one of the pair exact, the other a range.
+Observed here, and it is worse than a patch: installing both by name put a
+caret range on the client's current major in `dependencies` and an exact
+prerelease of the *next* major on the CLI in `devDependencies`, because the
+two packages' default tags had drifted a whole major apart and one of them
+pointed at a release candidate. The mismatch did not present as a version
+problem — the CLI had dropped the generate subcommand between majors, so
+`postinstall` failed with `No command registered for \`generate\``, which
+reads as a typo in the script. The asymmetry in the manifest was the only
+honest signal, and it was right there in the diff.
+
+**A `postinstall` that generates the ORM's client must not need a connection
+string, because the install runs where there is no database.** Step 8 puts
+generation in `postinstall` precisely so a fresh clone and an image build
+get the client for free — and both of those, plus the lint job in `ci`'s own
+workflow template, run the install with no `DATABASE_URL` set. An ORM whose
+configuration resolves the connection string eagerly then fails the install
+itself, not a later step: `PrismaConfigEnvError: Cannot resolve environment
+variable: DATABASE_URL`, before a single package is linked. Attach the URL
+to the ORM's config only when it is present, so `generate` runs without one
+and the migration commands still get it. This reads as a database problem
+and is a packaging one, which is why it is worth the sentence.
 
 **An applied migration is immutable.** Commentary goes beside it, never
 inside it: editing applied SQL desyncs the migration tool's own checksum of
@@ -374,17 +426,24 @@ module emits nothing outside it.
    an unparsed body into a 400, so a check that only looks at the response
    status would pass whether or not the parser runs, and prove nothing about
    the ordering it exists to protect. No GET request proves this either way.
-3. If `specs` is installed: change the contract's schema for a field on an
+3. If `specs` is installed: every class of contract rejection comes back
+   with its own status, from a running server — not a unit test of the
+   filter. A body with an extra property and a variant missing a required
+   field both answer `400`; an undeclared route answers `404`; the response
+   content type is the error media type the contract declares. Check the
+   status codes, not merely that something non-2xx came back: the filter
+   defect above answers every one of these `500`, which is non-2xx too.
+4. If `specs` is installed: change the contract's schema for a field on an
    operation whose controller already types its body from the generated
    client, and watch that controller fail to typecheck without a matching
    edit. This proves the typing is real rather than a hand-written lookalike
    that happens to compile today.
-4. If a hand-written default was added to a migration: in PostgreSQL,
+5. If a hand-written default was added to a migration: in PostgreSQL,
    `SELECT nextval('<sequence>'), nextval('<sequence>')` returns two
    consecutive numbers.
-5. The server refuses to start with a required variable unset, and the
+6. The server refuses to start with a required variable unset, and the
    error names the variable.
-6. Concurrency is verified **staged, not raced**: one client pauses inside
+7. Concurrency is verified **staged, not raced**: one client pauses inside
    its transaction immediately after the read, the other is released from
    its first statement, which makes the interleaving deterministic instead
    of timing-dependent. Then watch it both ways — with the lock removed it
@@ -393,6 +452,6 @@ module emits nothing outside it.
    nobody has watched fail is the least trustworthy kind of test there is,
    and a test of two operations arriving out of order *sequentially* is not
    a test of concurrency at all, though it reads exactly like one.
-7. `pnpm --filter <scope>/backend test` refuses to run when the database
+8. `pnpm --filter <scope>/backend test` refuses to run when the database
    name does not end in `_test`, and prints the two commands that create
    one.
