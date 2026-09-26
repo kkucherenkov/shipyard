@@ -49,6 +49,7 @@ A module's name — the table's first column, and the `<name>` in
 | [`specs`](modules/specs.md) | An OpenAPI contract, its linter, and a typed client generated from it and shipped as built output | `core` |
 | [`backend`](modules/backend.md) | An HTTP server validated against the contract at runtime, its schema, its write ordering and its authentication | `core` (and `specs`, for the runtime validator) |
 | [`cli`](modules/cli.md) | A command-line client consuming the generated client, with a local store and an outbox | `specs` |
+| [`ci`](modules/ci.md) | Gates matched to the modules the project installed, each a separately named check | whatever is present |
 
 Four more modules belong in this table and are not written: a browser client, a
 component package, a design-token pipeline, and a mobile client. They are absent

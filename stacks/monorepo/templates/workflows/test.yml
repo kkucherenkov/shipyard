@@ -1,0 +1,182 @@
+# Copy to .github/workflows/test.yml and DELETE the job blocks and steps for
+# every module this project declined. Delete them — do not comment them out
+# and do not add an `if:`. Branch protection counts a skipped required job as
+# blocking rather than passing, so a guarded job leaves pull requests
+# unmergeable; and a required check that never starts is absent from the
+# check list entirely, which reads as passing. Both directions of "disable
+# it" are wrong, in opposite ways.
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- always ---
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: <the packageManager version in the root package.json>
+      - uses: actions/setup-node@v4
+        with:
+          node-version: <the major from engines.node>
+          cache: pnpm
+      # Also runs the ORM's generate through the server package's postinstall.
+      # Without the generated client, type-aware rules see the ORM's namespace
+      # as a stub and pass on code that does not compile.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: ESLint and Prettier
+        run: pnpm lint
+
+  # --- delete this job unless the `specs` module is installed ---
+  contract:
+    name: Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: <the packageManager version in the root package.json>
+      - uses: actions/setup-node@v4
+        with:
+          node-version: <the major from engines.node>
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint the contract
+        run: pnpm spec:validate
+      # A regeneration that changes anything means the committed client and
+      # the contract disagree, which every consumer compiles against.
+      - name: Fail if the generated client is stale
+        run: |
+          pnpm spec:codegen
+          git diff --exit-code -- packages/specs/src/generated
+
+  workspace-tests:
+    name: Workspace tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # --- delete this services block unless the `docker` and `backend`
+    # modules are BOTH installed. The image and credentials match
+    # docker/compose.yml. The port here is the image's OWN port, not the host
+    # remap that file uses: the remap exists only to dodge a collision on a
+    # developer machine, and a service container has a network to itself.
+    #
+    # The database name ends in `_test` because backend's `assertTestDatabase`
+    # guard — loaded from `vitest.setup.ts` through `vitest.config.ts`'s
+    # `test.setupFiles` — refuses to run the DB-backed specs against a
+    # database whose name does not end that way. This container is thrown
+    # away with the job, but the name is what makes the claim true rather
+    # than assumed, and the same guard is what stops the suite reaching a
+    # developer's own database, which is how it destroyed one.
+    services:
+      postgres:
+        image: <the image in docker/compose.yml>
+        env:
+          POSTGRES_USER: <as in docker/compose.yml>
+          POSTGRES_PASSWORD: <as in docker/compose.yml>
+          POSTGRES_DB: <project>_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # --- delete this env block unless `backend` is installed. It is a
+    # separate condition from the services block above: a project can keep
+    # `backend` while declining `docker`, provisioning the test database some
+    # other way, and DATABASE_URL is still needed then even though the
+    # services block is gone.
+    #
+    # Setting these here is necessary but not sufficient: the task runner runs
+    # each task in a filtered environment, so a variable present in the step
+    # is still absent inside the test process unless the task declares it in
+    # turbo.json — on the task, never in globalEnv.
+    env:
+      DATABASE_URL: postgresql://<user>:<password>@localhost:5432/<project>_test
+      <OTHER_REQUIRED_VARS>: <ci-only values>
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: <the packageManager version in the root package.json>
+      - uses: actions/setup-node@v4
+        with:
+          node-version: <the major from engines.node>
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --- delete unless `backend` is installed ---
+      # `migrate deploy` applies migrations and nothing else; unlike
+      # `migrate dev` it does NOT generate the client. The client comes from
+      # the server package's postinstall, which the install step above runs.
+      - name: Apply database migrations
+        working-directory: apps/backend
+        run: pnpm prisma migrate deploy
+
+      # build is listed explicitly although dependsOn: ["^build"] would pull
+      # it in, so the ordering is an assertion this job makes rather than an
+      # implementation detail of another package's turbo.json.
+      - name: Build, typecheck, and test the workspace
+        run: pnpm -w exec turbo run build typecheck test
+
+      # --- delete the three steps below unless `backend` is installed ---
+      # Everything above calls services and pure functions directly. Nothing
+      # above starts an HTTP server, so the controller, the body-parser
+      # ordering, the error filter in a real pipeline and the contract
+      # validator have no coverage at all. That gap is not hypothetical: an
+      # ordering change here once made every POST answer 400, and the task
+      # that introduced it verified two GET requests and saw nothing.
+      #
+      # The port differs from the server's default so the command is the
+      # same one a developer runs locally, where the default is often
+      # already taken.
+      - name: Start the server
+        env:
+          PORT: 3010
+        run: |
+          node apps/backend/dist/main.js > backend.log 2>&1 &
+          echo $! > backend.pid
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:3010/api/v1/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'the server never answered /health' >&2
+          cat backend.log >&2
+          exit 1
+
+      - name: Prove the end-to-end path
+        env:
+          <PROJECT>_URL: http://localhost:3010/api/v1
+        run: sh scripts/<proof>.sh
+
+      # Always, so a failed proof still shows what the server logged, and so
+      # the job does not wait on a process it started.
+      - name: Stop the server
+        if: always()
+        run: |
+          if [ -f backend.log ]; then cat backend.log; fi
+          if [ -f backend.pid ]; then kill "$(cat backend.pid)" || true; fi
