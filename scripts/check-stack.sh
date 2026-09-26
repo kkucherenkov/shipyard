@@ -143,40 +143,108 @@ done
 set +f
 IFS=$oldifs
 
-# R3. Every module file carries the same six headings, in any file, spelled the
-# same way. The one that earns this rule is "## Declining this module": a module
-# whose files are reached by another module's script cannot be omitted without
-# editing that other module, and the only way to find out is to make somebody
-# write down what a decline removes. A module file that cannot answer has a
-# seam in it.
-skill_dir="$stack_root/monorepo/skills/monorepo-stack"
-if [ -d "$skill_dir/modules" ]; then
+# R3, R4 and R8 all belong to one stack's own skill directory, and walk every
+# stack under stacks/ generically — the same way the find above collects
+# $files across all of stacks/ rather than one hardcoded plugin — so a second
+# stack directory cannot silently escape any of the three.
+for skill_dir in "$stack_root"/*/skills/*/; do
+  [ -d "$skill_dir" ] || continue
+  skill_dir=${skill_dir%/}
+  skill_file="$skill_dir/SKILL.md"
+
+  # R8. The stack skill's own frontmatter is checked by nothing else:
+  # check-skills.sh globs only <root>/skills/*/SKILL.md, which a nested
+  # stacks/*/skills/*/SKILL.md never matches. Mirrors check-skills.sh's rules
+  # 1 and 2 exactly — a non-empty name:, a description carrying a trigger
+  # phrase — rather than widening that script's own glob, which would also
+  # drag its forbidden-technology-noun rule onto a file whose entire job is
+  # naming the technologies a recipe installs.
+  if [ -f "$skill_file" ]; then
+    name_val=$(sed -n 's/^name: *//p' "$skill_file" | head -1)
+    [ -n "$name_val" ] || fail "$skill_file" 'frontmatter is missing a non-empty name:'
+    desc_val=$(sed -n 's/^description: *//p' "$skill_file" | head -1)
+    printf '%s' "$desc_val" | grep -qiE 'use (when|before|after|while)' \
+      || fail "$skill_file" 'description does not name a triggering task (needs "use when/before/after")'
+  fi
+
+  [ -d "$skill_dir/modules" ] || continue
+
+  # R3. Every module file carries the same six headings, in this order,
+  # spelled the same way, and "## Declining this module" says enough to be
+  # useful rather than merely present. The heading this rule exists for is
+  # "## Declining this module": a module whose files are reached by another
+  # module's script cannot be omitted without editing that other module, and
+  # the only way to find out is to make somebody write down what a decline
+  # removes. A module file that never says, or says it in one line ("just
+  # don't install it"), has a seam in it — so the same length floor R5
+  # already puts under a Traps paragraph goes under this heading too.
   for m in "$skill_dir"/modules/*.md; do
     [ -e "$m" ] || continue
     for heading in '## Preconditions' '## Steps' '## What the consumer decides' \
       '## Traps' '## Declining this module' '## Verify'; do
       grep -qxF "$heading" "$m" || fail "$m" "missing required heading: $heading"
     done
+
+    # The six headings must appear in that order. present_headings is the
+    # canonical list filtered down to whichever of the six this file actually
+    # has (order not yet meaningful); actual_order is what grep finds in file
+    # order. If a required heading is entirely missing, both lists drop it
+    # equally, so only a genuine reordering — not an absence already reported
+    # above — trips this.
+    canonical='## Preconditions
+## Steps
+## What the consumer decides
+## Traps
+## Declining this module
+## Verify'
+    present_headings=$(grep -xE '## (Preconditions|Steps|What the consumer decides|Traps|Declining this module|Verify)' "$m" | sort -u)
+    ph=$(mktemp)
+    printf '%s\n' "$present_headings" > "$ph"
+    expected_order=$(printf '%s\n' "$canonical" | grep -Fxf "$ph")
+    actual_order=$(grep -xE '## (Preconditions|Steps|What the consumer decides|Traps|Declining this module|Verify)' "$m")
+    rm -f "$ph"
+    if [ "$expected_order" != "$actual_order" ]; then
+      fail "$m" 'required headings are out of order (want: Preconditions, Steps, What the consumer decides, Traps, Declining this module, Verify)'
+    fi
+
+    # "## Declining this module" must say enough to name what disappears, not
+    # merely exist. Same technique and floor as R5's Traps check, applied to
+    # the whole section instead of a bold-led paragraph, since a decline
+    # section is not written as a trap.
+    decline_len=$(awk '
+      /^## Declining this module/ { inside = 1; next }
+      /^## / { inside = 0 }
+      inside { body = body $0 " " }
+      END { print length(body) }
+    ' "$m")
+    if [ "$decline_len" -lt 200 ]; then
+      fail "$m" '## Declining this module says too little to name what a decline removes'
+    fi
   done
 
   # R4. The module table in SKILL.md and the files under modules/ are the same
-  # set. A table row with no file sends a reader to a page that does not exist;
-  # a file with no row is a module nobody can find, which is the same as not
-  # having written it.
-  tabled=$(grep -oE '\(modules/[a-z-]+\.md\)' "$skill_dir/SKILL.md" 2>/dev/null \
+  # set, over the alphabet a module name is allowed to use: lowercase letters,
+  # digits, and hyphens (SKILL.md states this). A table row with no file sends
+  # a reader to a page that does not exist; a file with no row is a module
+  # nobody can find, which is the same as not having written it.
+  tabled=$(grep -oE '\(modules/[a-z0-9-]+\.md\)' "$skill_file" 2>/dev/null \
     | sed 's|(modules/||; s|\.md)||' | sort -u)
   present=$(find "$skill_dir/modules" -name '*.md' -exec basename {} .md \; | sort -u)
   if [ "$tabled" != "$present" ]; then
     # Process substitution (<(...)) is not POSIX; the runner's /bin/sh is not
     # guaranteed to be bash, so the two sides go through temp files instead.
+    # Only write a side that is actually non-empty: printf '%s\n' "" still
+    # emits one blank line, which grep -vxF then reports as a spurious
+    # "only" entry and defeats the ${var:-none} fallback below.
     t=$(mktemp); p=$(mktemp)
-    printf '%s\n' "$tabled" > "$t"; printf '%s\n' "$present" > "$p"
+    [ -n "$tabled" ] && printf '%s\n' "$tabled" > "$t"
+    [ -n "$present" ] && printf '%s\n' "$present" > "$p"
     only_tabled=$(grep -vxF -f "$p" "$t" | tr '\n' ' ')
     only_present=$(grep -vxF -f "$t" "$p" | tr '\n' ' ')
     rm -f "$t" "$p"
     fail "$skill_dir" "module table and modules/ disagree — tabled only: ${only_tabled:-none}; present only: ${only_present:-none}"
   fi
-fi
+done
 
 # R6. No pnpm script the recipe never tells anyone to create. The failure this
 # catches is documented rather than imagined: a consumer's own docs described a

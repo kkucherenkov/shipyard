@@ -21,8 +21,8 @@ day, with the evidence still attached.
   one; never a pin.
 - It does not carry a lockfile, a dependency override, or a workaround pinned
   for a bug in somebody else's repository.
-- It does not cover a browser client, a component library, a design-token
-  pipeline or a Flutter client. Those modules are unwritten because no project
+- It does not cover a browser client, a component package, a design-token
+  pipeline or a mobile client. Those modules are unwritten because no project
   has installed them yet, and writing them from memory is how a template dies.
 
 ## Install

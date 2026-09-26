@@ -39,6 +39,9 @@ of instructions, and the instruction is to look before acting.
 
 ## The modules
 
+A module's name — the table's first column, and the `<name>` in
+`modules/<name>.md` — is lowercase letters, digits, and hyphens only.
+
 | Module | Provides | Requires |
 | --- | --- | --- |
 
