@@ -4,11 +4,17 @@
 
 - `core` installed: the workspace globs, the build graph, and the base
   TypeScript config.
+- A decorator-based Node framework with a dependency-injection container,
+  over an ORM with its own migration tool. This module is written for
+  NestJS and Prisma, concretely, in every trap below; the conventions hold
+  for any pair with those two capabilities, the names in the traps do not.
 - `specs` installed, if this server is to validate requests and responses
   against the contract at runtime and type its own request and response
   bodies from the generated client. Two steps below are marked
   `(Only with specs.)` for exactly this reason — skip both together if not,
-  and say so in the project's `CLAUDE.md`.
+  and name both of them, by name, in the project's `CLAUDE.md`: a reader who
+  finds no validator mounted will otherwise assume it was forgotten rather
+  than declined on purpose.
 - A database reachable, from `docker` or from wherever this project runs one.
 - No existing `apps/backend`.
 
@@ -28,6 +34,28 @@
    `tsconfig.build.json` extending that, with `rootDir`/`outDir` set and
    `include` re-declared as `["src"]` — since a freshly generated tsconfig
    extends nothing of this workspace's.
+
+   Give the package the scripts every step from here on assumes exist,
+   replacing whatever the generator wrote:
+
+   ```json
+   {
+     "scripts": {
+       "build": "tsc -p tsconfig.build.json",
+       "typecheck": "tsc --noEmit",
+       "test": "vitest run",
+       "lint": "eslint .",
+       "postinstall": "<the ORM's client-generation command>"
+     }
+   }
+   ```
+
+   `vitest` is this recipe's test runner for every package that has tests;
+   add it as a dev dependency here, since nothing `core` installs brings a
+   test runner with it. Delete whatever different one the generator wired by
+   default — many default to a different runner entirely, config file and
+   dev dependencies included — or `test` names two runners and only one of
+   them is real.
 
 2. **Make one class the only reader of the process environment.** Everything
    else injects it. It exposes a `required(name)` that throws on a missing or
@@ -57,10 +85,11 @@
    the request pipeline, and disable the framework's built-in one at
    creation.** This matters even before `specs` is installed — it is also
    where the body size limit is set, see the trap on that below — and it
-   becomes load-bearing the moment the contract validator (next step) is
-   mounted too: mounted before this step's parser has run, the validator
-   reads an empty body; mounted after it, it reads the real one. See the
-   trap below for the specific way this fails.
+   becomes load-bearing the moment the step below marked
+   `(Only with specs.)` that mounts a contract validator is added too:
+   mounted before this step's parser has run, the validator reads an empty
+   body; mounted after it, it reads the real one. See the trap below for the
+   specific way this fails.
 
 5. **`(Only with specs.)` Mount the contract validator against the spec
    package's document**, with request and response validation on and
@@ -78,10 +107,14 @@
 
 7. **Install a global exception filter** that reads the status off either a
    framework exception or a plain `{ status, message }` object, and renders
-   the error schema the contract declares. It logs 5xx at `error` with the
-   original object and its stack, and 4xx at `warn` with no stack. See the
-   two traps below: this filter is wrong in two specific ways that pass
-   review.
+   the error schema the contract declares. The second shape is only ever
+   thrown by the contract validator — the `(Only with specs.)` step above
+   that mounts it — so without `specs` that branch simply never fires; the
+   filter itself is not one of this module's two removable steps, and stays
+   regardless, since every route still throws framework exceptions on its
+   own. It logs 5xx at `error` with the original object and its stack, and
+   4xx at `warn` with no stack. See the two traps below: this filter is
+   wrong in two specific ways that pass review.
 
 8. **Add the ORM**, with its CLI and its client **exact-pinned to the same
    version** — not a caret on either. Wire `prisma generate` (or the ORM's
@@ -113,10 +146,12 @@
     guard that takes the identity from the token and from nothing else a
     request can influence.
 
-12. **Add the test-database guard** in the package's test setup file, loaded
-    for every spec rather than opted into by the specs that need it. It
-    refuses the whole run when the database name does not end in `_test`,
-    and its message prints the two commands that create one.
+12. **Add the test-database guard.** Export a function — call it
+    `assertTestDatabase(url)` — from `vitest.setup.ts` at the package root,
+    and point `vitest.config.ts`'s `test.setupFiles` at it, so it loads
+    before every spec file runs rather than being opted into by the specs
+    that need it. It refuses the whole run when the database name does not
+    end in `_test`, and its message prints the two commands that create one.
 
 ## What the consumer decides
 
@@ -193,10 +228,10 @@ touching those models before applying it.
 
 **Verify a hand-written migration with a query that has an expected
 answer.** "Remember to append the SQL" is an instruction somebody can follow
-and not notice failed. `SELECT nextval(...), nextval(...)` returning two
-consecutive numbers is a check that cannot be passed by accident. This
-mattered because the symptom of the omission appeared two tasks later, in
-correct-looking code, as a cursor that never advanced.
+and not notice failed. In PostgreSQL, `SELECT nextval(...), nextval(...)`
+returning two consecutive numbers is a check that cannot be passed by
+accident. This mattered because the symptom of the omission appeared two
+tasks later, in correct-looking code, as a cursor that never advanced.
 
 **Pin an ORM's CLI and client to the same exact version, not a range on
 either.** They ship a binary protocol between them, so a range says "any of
@@ -210,9 +245,23 @@ is an asymmetry inside one file — one of the pair exact, the other a range.
 **An applied migration is immutable.** Commentary goes beside it, never
 inside it: editing applied SQL desyncs the migration tool's own checksum of
 that file, and the repair is a manual write to its bookkeeping table — the
-next `migrate deploy` on a fresh clone refuses to run at all until someone
-does, because the tool can no longer tell whether the file it holds is the
-one it applied.
+next `migrate deploy` (or the ORM's equivalent) on a fresh clone refuses to
+run at all until someone does, because the tool can no longer tell whether
+the file it holds is the one it applied.
+
+**The per-subject advisory lock is not defence in depth here — without it, a
+pull can permanently skip a row.** A write takes its place in the monotonic
+sequence from Step 9 and commits some time after that number is issued; two
+overlapping writes of one subject can take their numbers in one order and
+commit in the other, because nothing on its own serialises them. A pull that
+has already seen the higher number filters everything from then on by
+`seq > cursor`, and the row that committed second, carrying the lower
+number, never satisfies that filter again — it is not delayed, it is gone
+from that client's point of view, and silently: no error, no retry, nothing
+in a log to point at. This is worth carrying as a default rather than an
+option a project opts into after finding the gap, because a client that
+queues writes while offline and replays them on reconnect turns overlapping
+writes of one subject from a rare accident into routine traffic.
 
 **A read-modify-write without a row lock loses one of two concurrent updates
 to different fields of the same row.** This survived eight per-task reviews
@@ -315,14 +364,19 @@ module emits nothing outside it.
    handler throw returns a 5xx whose body does **not** contain the thrown
    message, **and** the logger received that message. Write both; a test
    that checks only the body passes on a filter that has gone silent.
-2. A POST carrying a body reaches its handler and is not answered 400. This
-   is the body-parser ordering proved, and no GET request proves it.
+2. A POST carrying a body reaches its handler with a value from that body
+   already on it — assert the handler observed a specific field, not merely
+   that the response wasn't 400. This is the body-parser ordering proved on
+   its own terms: with `specs` declined there is no validator left to turn
+   an unparsed body into a 400, so a check that only looks at the response
+   status would pass whether or not the parser runs, and prove nothing about
+   the ordering it exists to protect. No GET request proves this either way.
 3. If `specs` is installed: change the contract's schema for a field on an
    operation whose controller already types its body from the generated
    client, and watch that controller fail to typecheck without a matching
    edit. This proves the typing is real rather than a hand-written lookalike
    that happens to compile today.
-4. If a hand-written default was added to a migration:
+4. If a hand-written default was added to a migration: in PostgreSQL,
    `SELECT nextval('<sequence>'), nextval('<sequence>')` returns two
    consecutive numbers.
 5. The server refuses to start with a required variable unset, and the
