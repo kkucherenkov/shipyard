@@ -65,7 +65,9 @@
    in Step 1, while its first real spec does not exist until the test-database
    guard is in place at Step 12. The obvious repair, a flag that passes when
    nothing was collected, manufactures exactly the silent hole `ci`'s own
-   traps are about.
+   traps are about. Until that commit lands this package is missing from
+   every workspace-wide `test` run rather than failing one, which is why
+   Step 12 is a step and not a suggestion.
 
    No `postinstall` yet. It generates the ORM's client and belongs in Step
    8, written in the same edit that installs the ORM's CLI — write it here
@@ -78,8 +80,8 @@
    add it as a dev dependency here, since nothing `core` installs brings a
    test runner with it. Delete whatever different one the generator wired by
    default — many default to a different runner entirely, config file and
-   dev dependencies included — or `test` names two runners and only one of
-   them is real.
+   dev dependencies included — or the `test` you declare at Step 12 names
+   two runners and only one of them is real.
 
 2. **Make one class the only reader of the process environment.** Everything
    else injects it. It exposes a `required(name)` that throws on a missing or
