@@ -22,13 +22,16 @@ here.
 
 ## Non-negotiables
 
-The four bold rules below are the `specs` module's own — it carries the trap
-each one prevents, so read it rather than trusting this shortened form. Most of
-the plain ones are general API-contract practice this recipe does not itself
-establish; nothing here checks for them, `api-design-principles` is the
-yardstick, and they stay because none of them contradicts the module. The
-exception is the last one — the URL-prefix rule for a breaking change comes
-from the `backend` module's own versioning convention, not from `specs`.
+Three buckets here, not two. The four bold rules are the `specs` module's
+own — it carries the trap each one prevents, so read it rather than trusting
+this shortened form. The first bullet below is this agent's own scope
+boundary, not a recipe convention — nothing grants or denies it, the same way
+the frontmatter's `tools:` line does not come from a module either. The
+remaining plain bullets are general API-contract practice this recipe does not
+itself establish; nothing here checks for them, `api-design-principles` is the
+yardstick, and they stay because none of them contradicts the module — except
+the last one, where the URL-prefix rule for a breaking change comes from the
+`backend` module's own versioning convention, not from `specs`.
 
 - Never touch implementation code under `apps/`, and never touch generated
   output under `src/generated/`.
@@ -40,12 +43,12 @@ from the `backend` module's own versioning convention, not from `specs`.
 - **Every request body has `additionalProperties: false`.** A full `required`
   list still reads as strict with the schema left open; see the module for
   why that is mass assignment wearing a closed schema's look.
-- **Split a variant type by its discriminator with `oneOf`.** A flat schema's
-  shared `required` fields promise less than the union does, and the runtime
-  validator enforces the schema, not the union.
-- **Every operation declares a `default` error response.** Without one, a
-  status with no schema makes response validation throw inside the response,
-  after the error filter has already run.
+- **Split a variant type by its discriminator with `oneOf`.** See the module
+  for why a flat schema's shared `required` fields promise less than the
+  union does.
+- **Every operation declares a `default` error response.** See the module for
+  why a status with no schema throws inside the response, after the error
+  filter has already run.
 - Every non-2xx response references the shared error schema. Every successful
   response has an example.
 - Define an enum once under `components/schemas` and reference it. No inline
