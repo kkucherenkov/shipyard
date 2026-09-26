@@ -47,6 +47,7 @@ A module's name — the table's first column, and the `<name>` in
 | [`core`](modules/core.md) | Package-manager workspace, build graph, base TypeScript config, lint, format | nothing |
 | [`docker`](modules/docker.md) | A compose file for the services the project develops against, on non-colliding host ports | nothing |
 | [`specs`](modules/specs.md) | An OpenAPI contract, its linter, and a typed client generated from it and shipped as built output | `core` |
+| [`backend`](modules/backend.md) | An HTTP server validated against the contract at runtime, its schema, its write ordering and its authentication | `core` (and `specs`, for the runtime validator) |
 
 Four more modules belong in this table and are not written: a browser client, a
 component package, a design-token pipeline, and a mobile client. They are absent
