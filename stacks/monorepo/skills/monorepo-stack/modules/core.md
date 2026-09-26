@@ -1,7 +1,7 @@
 # `core` — workspace, build graph, TypeScript
 
-The floor every other module stands on. It is the one module that cannot be
-declined.
+The floor every other module stands on. Within this recipe, it is the one
+module that cannot be declined.
 
 ## Preconditions
 
@@ -39,7 +39,7 @@ declined.
    them — `pnpm add -Dw typescript eslint @eslint/js typescript-eslint prettier
    turbo`. Do not write versions into this file by hand.
 
-2. **Declare two workspace globs, not one.**
+2. **Declare two workspace globs, not one**, in `pnpm-workspace.yaml`:
 
    ```yaml
    packages:
@@ -51,8 +51,8 @@ declined.
    — rather than by who imports it. One glob makes that distinction a naming
    convention, and a naming convention is not enforced by anything.
 
-3. **Declare the build graph.** Four tasks, and the first three wait for their
-   dependencies' builds:
+3. **Declare the build graph**, in `turbo.json`. Four tasks, each waiting for
+   their dependencies' builds:
 
    ```json
    {
@@ -79,7 +79,8 @@ declined.
    reads a database and wrong for `build` and `typecheck` — those would miss
    cache on every change to a connection string they never read.
 
-4. **Write the base TypeScript config** at the root, extended by every package:
+4. **Write the base TypeScript config**, `tsconfig.base.json`, at the root,
+   extended by every package:
 
    ```json
    {
@@ -100,17 +101,34 @@ declined.
 5. **Give every package two tsconfigs, not one.** `tsconfig.json` includes
    everything — sources, specs, and the package's own root-level config files —
    with `noEmit: true`. `tsconfig.build.json` extends it, sets `noEmit: false`
-   with an `outDir` and a `rootDir`, and excludes `**/*.spec.ts`. `typecheck`
-   and ESLint read the first; `build` reads the second.
+   with `rootDir: "src"` and an `outDir`, and **re-declares `include` as
+   `["src"]`** rather than inheriting the base file's. `extends` inherits
+   `include` along with everything else, so a root-level file such as
+   `vitest.config.ts` — swept in by the base config's `include`, but outside
+   `rootDir` — fails the build with `TS6059` if the build config still
+   inherits that wider `include`. On top of the narrower `include`, it
+   excludes `**/*.spec.ts`. `typecheck` and ESLint read the first; `build`
+   reads the second.
 
-6. **Configure ESLint once, at the workspace root**, as a flat config using the
-   recommended type-checked rule set with the project service enabled, ignoring
-   `**/dist/` and any generated directory. Add a final block applying the
-   disable-type-checked preset to `**/*.{js,mjs}`, so config files that sit
-   outside every tsconfig get syntax rules rather than an error.
+6. **Configure ESLint once, at the workspace root**, in `eslint.config.mjs`, as
+   a flat config using the recommended type-checked rule set with the project
+   service enabled, ignoring `**/dist/` and any generated directory. Add a
+   final block applying the disable-type-checked preset to `**/*.{js,mjs}`, so
+   config files that sit outside every tsconfig get syntax rules rather than
+   an error.
 
-7. **Configure Prettier, and keep it away from Markdown.** A `.prettierignore`
-   covering the lockfile, every generated directory, and `*.md`.
+7. **Configure Prettier, and keep it away from Markdown.** `.prettierrc.json`
+   carrying the two settings this recipe fixes rather than leaves open:
+
+   ```json
+   {
+     "singleQuote": true,
+     "printWidth": 80
+   }
+   ```
+
+   Alongside it, a `.prettierignore` covering the lockfile, every generated
+   directory, and `*.md`.
 
 8. **Create `.git-blame-ignore-revs`** at the root with a comment naming
    `git config blame.ignoreRevsFile .git-blame-ignore-revs`, and add the SHA of
@@ -119,9 +137,8 @@ declined.
 ## What the consumer decides
 
 The package scope, the Node floor, the package-manager version, the ES target,
-Prettier's print width and quote style, any rule set beyond the recommended
-type-checked one, and whether Markdown is formatted at all (see the trap below
-before deciding yes).
+any rule set beyond the recommended type-checked one, and whether Markdown is
+formatted at all (see the trap below before deciding yes).
 
 ## Traps
 
@@ -185,9 +202,14 @@ a task to a graph, or a type to a config this module is what defines.
 
 Each of these has an answer that cannot be produced by accident:
 
-1. `pnpm -w exec turbo run typecheck lint` exits `0` on the empty workspace.
-   Not "prints no errors" — exits `0`; a task runner that found no tasks to run
-   also prints no errors.
+1. `grep -c '"dependsOn": \["\^build"\]' turbo.json` prints `4` — every task's
+   dependency declared, checked against the file this step writes rather than
+   by running the graph. `pnpm -w exec turbo run typecheck lint --dry=json`
+   against the empty workspace reports `"tasks": []` regardless of whether
+   `dependsOn` is set correctly, because dry-run resolves task instances per
+   package and there are no packages yet — the same "nothing ran" result
+   either way is the accident this check exists to rule out, not the thing to
+   assert on.
 2. `grep -c noUncheckedIndexedAccess tsconfig.base.json` prints `1`.
 3. `pnpm exec prettier --check .` exits `0`, and adding a deliberately
    misformatted `.ts` file makes it exit non-zero. Run both halves — a formatter
