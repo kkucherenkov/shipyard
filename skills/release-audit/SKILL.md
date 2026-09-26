@@ -125,7 +125,7 @@ first written against:
   probe reads `data-theme` or a `dark` class — both assume one theming
   convention.
 - The baseline pass in `sweep` and all of `states` mode sign in as a persona
-  literally named `admin` — `driver.mjs:240` and `:277` — so `AUDIT_PERSONAS`
+  literally named `admin` — `driver.mjs:252` and `:289` — so `AUDIT_PERSONAS`
   can add or rename the other personas but cannot rename this one out from
   under those two passes.
 - `auth-adapter.mjs:32-36` fixes the persona map to exactly three keys,
