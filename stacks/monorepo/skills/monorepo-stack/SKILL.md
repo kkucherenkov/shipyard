@@ -45,6 +45,7 @@ A module's name — the table's first column, and the `<name>` in
 | Module | Provides | Requires |
 | --- | --- | --- |
 | [`core`](modules/core.md) | Package-manager workspace, build graph, base TypeScript config, lint, format | nothing |
+| [`docker`](modules/docker.md) | A compose file for the services the project develops against, on non-colliding host ports | nothing |
 
 Four more modules belong in this table and are not written: a browser client, a
 component package, a design-token pipeline, and a mobile client. They are absent
