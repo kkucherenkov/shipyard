@@ -76,13 +76,31 @@ for skill in "$root"/skills/*/SKILL.md; do
 done
 
 # 5. No two skills may claim the same trigger, or the choice between them is
-#    arbitrary and half of what they carry becomes unreachable.
-dupes=$(sed -n 's/^description: *//p' "$root"/skills/*/SKILL.md 2>/dev/null \
-  | tr 'A-Z' 'a-z' \
-  | grep -oE 'use (when|before|after|while)[^.,;]*' \
-  | sort | uniq -d)
-if [ -n "$dupes" ]; then
-  fail 'skills/' "two skills claim the same trigger: $dupes"
+#    arbitrary and half of what they carry becomes unreachable. The message
+#    names every skill that collided, not just the trigger text — a message
+#    naming only one skill leaves the reader guessing which pair it is.
+trigger_hits=$(
+  for f in "$root"/skills/*/SKILL.md; do
+    [ -e "$f" ] || continue
+    trig=$(sed -n 's/^description: *//p' "$f" | head -1 | tr 'A-Z' 'a-z' \
+      | grep -oE 'use (when|before|after|while)[^.,;]*' | head -1)
+    [ -n "$trig" ] && printf '%s\t%s\n' "$trig" "$f"
+  done
+)
+if [ -n "$trigger_hits" ]; then
+  dup_triggers=$(printf '%s\n' "$trigger_hits" | cut -f1 | sort | uniq -d)
+  if [ -n "$dup_triggers" ]; then
+    oldifs=$IFS
+    IFS='
+'
+    for trig in $dup_triggers; do
+      colliding=$(printf '%s\n' "$trigger_hits" \
+        | awk -F '\t' -v t="$trig" '$1 == t { print $2 }' \
+        | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+      fail 'skills/' "two skills claim the same trigger ($trig): $colliding"
+    done
+    IFS=$oldifs
+  fi
 fi
 
 if [ "$failures" -gt 0 ]; then

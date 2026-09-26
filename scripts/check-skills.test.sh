@@ -21,6 +21,25 @@ make_skill() {
   } > "$root/skills/sample/SKILL.md"
 }
 
+# Add a named skill to an existing tree in $1 (skill name $2, frontmatter $3,
+# body $4). Lets a case put more than one skill under the same skills/ root —
+# make_skill above stays single-skill and untouched for every case that only
+# needs one.
+add_skill() {
+  root=$1
+  name=$2
+  desc=$3
+  body=$4
+  mkdir -p "$root/skills/$name"
+  {
+    printf -- '---\n'
+    printf 'name: %s\n' "$name"
+    printf 'description: %s\n' "$desc"
+    printf -- '---\n\n'
+    printf '# %s\n\n%s\n' "$name" "$body"
+  } > "$root/skills/$name/SKILL.md"
+}
+
 expect() {
   want=$1
   desc=$2
@@ -61,6 +80,43 @@ expect 1 'a dangling relative link fails' \
   "$good_trap
 
 See [the driver](driver.mjs)."
+
+# Rule 5 needs two skills in one tree, which expect()/make_skill can't build,
+# so these two cases drive check-skills.sh directly instead of through expect().
+
+root=$(mktemp -d)
+add_skill "$root" alpha 'Use when a pull request looks green but will not merge.' "$good_trap"
+add_skill "$root" beta 'Use when a pull request looks green but will not merge.' "$good_trap"
+out=$(sh "$subject" "$root" 2>&1 >/dev/null)
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s two skills sharing a trigger fails\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+case $out in
+  *alpha*) has_alpha=1 ;;
+  *) has_alpha=0 ;;
+esac
+case $out in
+  *beta*) has_beta=1 ;;
+  *) has_beta=0 ;;
+esac
+if [ "$has_alpha" -ne 1 ] || [ "$has_beta" -ne 1 ]; then
+  printf 'FAIL two skills sharing a trigger: message does not name both skills: %s\n' "$out" >&2
+  failures=$((failures + 1))
+fi
+
+root=$(mktemp -d)
+add_skill "$root" alpha 'Use when a pull request looks green but will not merge.' "$good_trap"
+add_skill "$root" beta 'Use before cutting a release to confirm nothing regressed.' "$good_trap"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 0 ]; then
+  printf 'FAIL want=0 got=%s two skills with distinct triggers pass\n' "$got" >&2
+  failures=$((failures + 1))
+fi
 
 if [ "$failures" -gt 0 ]; then
   printf '%s failing case(s)\n' "$failures" >&2
