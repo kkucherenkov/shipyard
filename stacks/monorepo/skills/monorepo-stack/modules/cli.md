@@ -45,9 +45,19 @@ The module that costs almost nothing, entirely because `specs` already exists.
 
    `vitest` is this recipe's test runner for every package that has tests;
    add it as a dev dependency here too, since nothing `core` installs brings
-   one. A script this file does not declare is a task `turbo run` never
-   sees for this package — it drops silently out of every workspace-wide
-   `build`, `typecheck`, `test` or `lint`, rather than failing one.
+   one — and `@types/node`, which this package needs more than most, since
+   its store comes out of the runtime's own standard library. A script this
+   file does not declare is a task `turbo run` never sees for this package —
+   it drops silently out of every workspace-wide `build`, `typecheck`,
+   `test` or `lint`, rather than failing one.
+
+   **Declare `test` in the same commit as the package's first spec, not
+   before.** The runner exits non-zero when it finds no test files, so a
+   declared-but-empty `test` script fails the whole workspace run from the
+   moment this package exists — and the obvious repair, a flag that passes
+   when nothing was collected, manufactures exactly the silent hole `ci`'s
+   own traps are about. The Verify list below is five behaviours; write one
+   of them as the first spec.
 
 2. **Read and validate the whole configuration in one place, at startup**,
    and refuse to start rather than failing at first use. Same reasoning as
