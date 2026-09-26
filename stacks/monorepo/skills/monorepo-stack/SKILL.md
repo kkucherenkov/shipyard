@@ -36,3 +36,66 @@ Read what is already here. Every module below states its preconditions and what
 to check for, and every module can be installed into a workspace that already
 has others. There is no idempotency machinery and none is wanted: this is a set
 of instructions, and the instruction is to look before acting.
+
+## The modules
+
+| Module | Provides | Requires |
+| --- | --- | --- |
+
+Four more modules belong in this table and are not written: a browser client, a
+component package, a design-token pipeline, and a mobile client. They are absent
+rather than listed as planned, because a table that advertises a module nobody
+wrote misleads exactly the reader it is for. Each unblocks when a project
+actually installs it.
+
+### How to read `Requires`
+
+`Requires` is a hard dependency, not a suggestion. A module whose requirement is
+absent does not degrade — it produces debris. A contract package with no server
+is a validator with nothing to validate; a token pipeline with no consumer emits
+files nobody reads, and the first search of the new repository reports every
+token as dangling.
+
+So: if a requested module names a requirement this workspace does not have, say
+so and ask, rather than installing the requirement silently. Installing two
+modules when one was asked for is how a scaffold ends up holding things nobody
+chose.
+
+## Installing a module
+
+The same procedure whether this is the first module in an empty directory or
+the fifth added in month six.
+
+1. **Read the module file.** Each one is `modules/<name>.md`, with the same six
+   sections in the same order.
+2. **Check its preconditions against what is here**, by reading the tree, not by
+   asking. A module states what it needs to find and what it must not overwrite.
+3. **Stop if a requirement is missing** and say which one, rather than pulling it
+   in.
+4. **Follow the steps.** Where a step says to call a generator, call it — do not
+   write out what you remember it emitting.
+5. **Run the module's `## Verify` section.** Every check there has an expected
+   answer that cannot be produced by accident; a step that "looks right" is not
+   a verification.
+6. **Write the module's row into the project's `CLAUDE.md`**, between
+   `<!-- STACK:BEGIN -->` and `<!-- STACK:END -->`, from
+   [`../../templates/claude-md-block.md`](../../templates/claude-md-block.md).
+   Nothing outside those markers is yours to rewrite.
+
+There is no idempotency machinery and none is wanted. This is a set of
+instructions to a reader who can look at the tree first, and step 2 is that
+reader looking.
+
+## Declining a module, and adding it later
+
+A project that declines a module gets nothing from it: no file, no script, no
+job, no heading. Every module file's `## Declining this module` section says
+what that costs and — this is the part that matters — **names the steps in other
+modules that disappear with it.** A module whose decline forces an edit to a
+different module's files is a design defect in this recipe, not a decision for
+the project to live with. If you find one, fix the recipe.
+
+Adding a module in month six is this same procedure run again for that one
+module. It is not a second plugin and not a migration: the preconditions in step
+2 exist precisely so a module can be installed into a workspace that has been
+running for months.
