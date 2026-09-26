@@ -1,0 +1,17 @@
+{
+  "name": "shipyard",
+  "description": "Process discipline for a project: the task stack, lane discipline, CI gating, issue bookkeeping, deploy verification and the release audit.",
+  "version": "0.1.0",
+  "author": { "name": "Kirill Kucherenkov" },
+  "homepage": "https://github.com/kkucherenkov/shipyard",
+  "repository": "https://github.com/kkucherenkov/shipyard",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "process",
+    "task-stack",
+    "ci",
+    "release",
+    "code-review"
+  ]
+}

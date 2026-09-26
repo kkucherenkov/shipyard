@@ -1,0 +1,16 @@
+{
+  "name": "shipyard",
+  "description": "Portable process layer for new projects, plus stack presets.",
+  "owner": {
+    "name": "Kirill Kucherenkov",
+    "url": "https://github.com/kkucherenkov"
+  },
+  "plugins": [
+    {
+      "name": "shipyard",
+      "description": "Process discipline: task stack, lane discipline, CI gating, issue bookkeeping, deploy verification, release audit.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
