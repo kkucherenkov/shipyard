@@ -331,7 +331,11 @@ for skill_dir in "$stack_root"/*/skills/*/; do
     # to agree, on a table that genuinely disagreed. So the cell is no longer
     # searched at all: the one (modules/X.md) in it is extracted and X must
     # equal this module. A cell with none, or with two, matches nothing and
-    # the module is reported as having no row.
+    # the module is reported as having no row. The scan also stops at the
+    # first line after the header that is not a table row: without that, the
+    # search ran to the end of the file, and a later table with different
+    # columns supplied a row read at the first table's column indices. Two
+    # rows for one module are a failure rather than a silent first-wins.
     cell=$(awk -F'|' -v n="$mname" '
       { sub(/\r$/, "") }
       !hdr && /^[[:space:]]*\|/ {
@@ -344,7 +348,8 @@ for skill_dir in "$stack_root"/*/skills/*/; do
         }
         if (m && r) { hdr = 1; modcol = m; reqcol = r; next }
       }
-      hdr && !found && /^[[:space:]]*\|/ && modcol <= NF {
+      hdr && !/^[[:space:]]*\|/ { exit }
+      hdr && modcol <= NF {
         mc = $modcol
         links = 0
         linked = ""
@@ -354,13 +359,14 @@ for skill_dir in "$stack_root"/*/skills/*/; do
           mc = substr(mc, RSTART + RLENGTH)
         }
         if (links == 1 && linked == n) {
-          found = 1
-          if (reqcol <= NF) cell = $reqcol
+          found++
+          if (found == 1 && reqcol <= NF) cell = $reqcol
         }
       }
       END {
         if (!hdr) { print "@@noheader"; exit }
         if (!found) { print "@@norow"; exit }
+        if (found > 1) { print "@@duprow"; exit }
         print cell
       }
     ' "$skill_file")
@@ -370,6 +376,9 @@ for skill_dir in "$stack_root"/*/skills/*/; do
         continue ;;
       '@@norow')
         fail "$m" 'no module-table row whose Module cell links exactly this one module'
+        continue ;;
+      '@@duprow')
+        fail "$m" 'the module table has more than one row for this module'
         continue ;;
     esac
     if [ -z "$(printf '%s' "$cell" | tr -d '[:space:]')" ]; then

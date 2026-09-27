@@ -690,6 +690,56 @@ done
 expect_root 1 'a second module link in a Module cell does not hand over that row' \
   'sample.md'
 
+# The scan stops where the module table stops. Running on to the end of the
+# file let a later table with different columns supply a row, read at the
+# first table's column indices: a module absent from the module table but
+# mentioned in some other table passed.
+mk_module() {
+  {
+    printf '# %s\n\n## Preconditions\n\n- Requires: %s.\n\n' "$1" "$2"
+    printf '## Steps\n\n1. Do it.\n\n'
+    printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+    printf '## Declining this module\n\n%s\n\n' "$decline_filler"
+    printf '## Verify\n\nIt exists.\n'
+  } > "$3/$1.md"
+}
+
+root=$(mktemp -d)
+mods="$root/stacks/monorepo/skills/monorepo-stack/modules"
+mkdir -p "$mods"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md) | something | nothing |\n\n'
+  printf '## Somewhere else\n\n'
+  printf '| Template | Where | When |\n| --- | --- | --- |\n'
+  printf '| [`sample`](modules/sample.md) | somewhere | `core` |\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+mk_module core nothing "$mods"
+mk_module sample '`core`' "$mods"
+expect_root 1 'a row in a later, unrelated table is not this table row' \
+  'no module-table row'
+
+# Two rows for one module is a failure, not a silent first-wins.
+root=$(mktemp -d)
+mods="$root/stacks/monorepo/skills/monorepo-stack/modules"
+mkdir -p "$mods"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md) | something | nothing |\n'
+  printf '| [`core`](modules/core.md) | duplicate | `sample` |\n'
+  printf '| [`sample`](modules/sample.md) | something | nothing |\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+mk_module core nothing "$mods"
+mk_module sample nothing "$mods"
+expect_root 1 'two rows for one module fail rather than the first one winning' \
+  'more than one row for this module'
+
 # The declaration is read from ## Preconditions alone. A "- Requires:" line
 # under a later heading is prose about some other module, and letting it count
 # would put the rule back where it started: reading a dependency out of a
