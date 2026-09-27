@@ -170,6 +170,24 @@ case $out in
     ;;
 esac
 
+# Same block, same failure mode: a closing fence with a trailing space is not
+# a fence, and without one the rest of the file is inside the frontmatter.
+root=$(mktemp -d)
+mkdir -p "$root/skills/sample"
+{
+  printf -- '---\n'
+  printf 'description: %s\n' 'Use when a pull request looks green but will not merge.'
+  printf -- '--- \n\n'
+  printf '# Sample\n\nname: invented-in-the-body\n\n%s\n' "$good_trap"
+} > "$root/skills/sample/SKILL.md"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s a closing fence with a trailing space does not close the block\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
 expect 1 'a dangling relative link fails' \
   'Use when a pull request looks green but will not merge.' \
   "$good_trap

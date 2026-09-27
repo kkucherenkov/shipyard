@@ -382,7 +382,7 @@ mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
   printf '| [`core`](modules/core.md) | a workspace | nothing |\n'
 } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
 {
-  printf '# core\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n'
+  printf '# core\n\n## Preconditions\n\n- Requires: nothing.\n\n## Steps\n\n1. Do it.\n\n'
   printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
   printf '## Verify\n\nIt exists.\n'
 } > "$root/stacks/monorepo/skills/monorepo-stack/modules/core.md"
@@ -402,7 +402,7 @@ mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
 {
   # Traps swapped ahead of Preconditions: every heading is present, none is
   # too short, but the order is wrong.
-  printf '# core\n\n## Traps\n\nNone yet.\n\n## Preconditions\n\nNone.\n\n'
+  printf '# core\n\n## Traps\n\nNone yet.\n\n## Preconditions\n\n- Requires: nothing.\n\n'
   printf '## Steps\n\n1. Do it.\n\n## What the consumer decides\n\nNames.\n\n'
   printf '## Declining this module\n\n%s\n\n## Verify\n\nIt exists.\n' "$decline_filler"
 } > "$root/stacks/monorepo/skills/monorepo-stack/modules/core.md"
@@ -419,7 +419,7 @@ mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
   printf '| [`core`](modules/core.md) | a workspace | nothing |\n'
 } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
 {
-  printf '# core\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n'
+  printf '# core\n\n## Preconditions\n\n- Requires: nothing.\n\n## Steps\n\n1. Do it.\n\n'
   printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
   printf '## Declining this module\n\n## Verify\n\nIt exists.\n'
 } > "$root/stacks/monorepo/skills/monorepo-stack/modules/core.md"
@@ -436,7 +436,7 @@ mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
   printf '| [`core`](modules/core.md) | a workspace | nothing |\n'
 } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
 {
-  printf '# core\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n'
+  printf '# core\n\n## Preconditions\n\n- Requires: nothing.\n\n## Steps\n\n1. Do it.\n\n'
   printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
   printf '## Declining this module\n\nJust don'"'"'t install it.\n\n'
   printf '## Verify\n\nIt exists.\n'
@@ -494,22 +494,34 @@ expect_root 1 'a body line starting "description:" outside the frontmatter block
 # the same modules. Two modules, because a dependency needs something to
 # depend on: `core` requires nothing, `sample`'s cell is $4 and its own
 # declaration line is $5.
+# $6, optional: prose placed ABOVE the table, for the case where it carries a
+# (modules/<name>.md) link of its own. $7, optional: set to "no-pipe" to write
+# sample's row without its trailing "|". Both exist because a review got R9 to
+# pass on a genuine disagreement through each of them.
 expect_requires() {
   want=$1
   label=$2
   msg=$3
   cell=$4
   declaration=$5
+  preamble=${6:-}
+  row_shape=${7:-}
   root=$(mktemp -d)
   mods="$root/stacks/monorepo/skills/monorepo-stack/modules"
   mkdir -p "$mods"
   {
     printf -- '---\nname: monorepo-stack\n'
     printf 'description: Use when scaffolding a monorepo or adding a module.\n'
-    printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+    printf -- '---\n\n# Monorepo stack\n\n'
+    [ -n "$preamble" ] && printf '%s\n\n' "$preamble"
+    printf '## The modules\n\n'
     printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
     printf '| [`core`](modules/core.md) | something | nothing |\n'
-    printf '| [`sample`](modules/sample.md) | something | %s |\n' "$cell"
+    if [ "$row_shape" = no-pipe ]; then
+      printf '| [`sample`](modules/sample.md) | something | %s\n' "$cell"
+    else
+      printf '| [`sample`](modules/sample.md) | something | %s |\n' "$cell"
+    fi
   } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
   for m in core sample; do
     if [ "$m" = core ]; then
@@ -557,6 +569,35 @@ expect_requires 1 'a module with no declaration line fails'   'carries no "- Req
 
 expect_requires 1 'a declaration naming something that is not a module fails'   'which is not a module'   '`core`' '- Requires: `core`, `tokens`.'
 
+# A line above the table naming a module file is prose, not that module's row.
+# Reading the first line that merely contained "(modules/<name>.md)" made R9
+# compare the declaration against a sentence, and on a line with no "|" at all
+# awk's $(NF-1) is the whole line — so the sentence agreed and a table that
+# genuinely disagreed passed.
+expect_requires 1 'prose above the table is not the module row' \
+  'Requires disagrees with the module table' \
+  'nothing' '- Requires: `core`.' \
+  'The contract package [the sample module](modules/sample.md) builds on `core`.'
+
+# Module names count whether or not they are in backticks. Reading only
+# backticked tokens let both sides come out empty for different reasons and
+# agree.
+expect_requires 1 'an unbackticked module name in the cell still counts' \
+  'Requires disagrees with the module table' \
+  'core' '- Requires: nothing.'
+
+expect_requires 0 'an unbackticked name on both sides agrees' '' \
+  'core' '- Requires: core.'
+
+# A row without its trailing "|" has one field fewer. Counting back from the
+# end read the Provides column and compared the declaration against it.
+expect_requires 1 'a row with no trailing pipe is still read at its Requires column' \
+  'Requires disagrees with the module table' \
+  'nothing' '- Requires: `core`.' '' no-pipe
+
+expect_requires 0 'a row with no trailing pipe passes when the two sides agree' '' \
+  '`core`' '- Requires: `core`.' '' no-pipe
+
 # The declaration is read from ## Preconditions alone. A "- Requires:" line
 # under a later heading is prose about some other module, and letting it count
 # would put the rule back where it started: reading a dependency out of a
@@ -588,6 +629,20 @@ mkdir -p "$mods"
 } > "$mods/sample.md"
 expect_root 1 'a "- Requires:" line under ## Steps is not a declaration' \
   'carries no "- Requires:" line'
+
+# The block counts only when a closing "---" is found. Without that, a fence
+# the author typed with a trailing space leaves every following line inside
+# the "frontmatter", and the body line handed back the key it was supposed to
+# stop standing in for.
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
+{
+  printf -- '---\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '--- \n\n# Monorepo stack\n\nname: invented-in-the-body\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+expect_root 1 'a closing fence with a trailing space does not close the block' \
+  'frontmatter is missing a non-empty name'
 
 if [ "$failures" -gt 0 ]; then
   printf '%s failing case(s)\n' "$failures" >&2
