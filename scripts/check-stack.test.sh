@@ -655,6 +655,41 @@ mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
 expect_root 1 'a CRLF file with an empty name: value still fails' \
   'frontmatter is missing a non-empty name'
 
+# A self-link in a module's own Requires cell is a typo, not a dependency to
+# be quietly dropped. Dropping it on the table side made `sample` in sample's
+# own cell read as nothing and agree with "- Requires: nothing."
+expect_requires 1 "a module's own name in its Requires cell is not discarded" \
+  'Requires disagrees with the module table' \
+  '`sample`' '- Requires: nothing.'
+
+# A Module cell that names a second module in passing must not hand that
+# module its row. Searching the cell for the link, rather than extracting the
+# one link in it and comparing, meant core's row answered for sample as well:
+# sample was handed "nothing", which is what it declares, while its own row
+# said `core`.
+root=$(mktemp -d)
+mods="$root/stacks/monorepo/skills/monorepo-stack/modules"
+mkdir -p "$mods"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md), which [`sample`](modules/sample.md) extends | something | nothing |\n'
+  printf '| [`sample`](modules/sample.md) | something | `core` |\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+for mod in core sample; do
+  {
+    printf '# %s\n\n## Preconditions\n\n- Requires: nothing.\n\n' "$mod"
+    printf '## Steps\n\n1. Do it.\n\n'
+    printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+    printf '## Declining this module\n\n%s\n\n' "$decline_filler"
+    printf '## Verify\n\nIt exists.\n'
+  } > "$mods/$mod.md"
+done
+expect_root 1 'a second module link in a Module cell does not hand over that row' \
+  'sample.md'
+
 # The declaration is read from ## Preconditions alone. A "- Requires:" line
 # under a later heading is prose about some other module, and letting it count
 # would put the rule back where it started: reading a dependency out of a
