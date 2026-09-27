@@ -2,6 +2,7 @@
 
 ## Preconditions
 
+- Requires: `core`.
 - At least one other module installed. This module's content is derived from
   which ones.
 - A repository hosted somewhere that runs workflows.

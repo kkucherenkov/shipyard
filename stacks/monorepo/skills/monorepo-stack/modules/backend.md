@@ -2,6 +2,7 @@
 
 ## Preconditions
 
+- Requires: `core`; and `specs`, for the runtime validator.
 - `core` installed: the workspace globs, the build graph, and the base
   TypeScript config.
 - A decorator-based Node framework with a dependency-injection container,

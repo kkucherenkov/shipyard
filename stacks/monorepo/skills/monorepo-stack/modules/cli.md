@@ -4,6 +4,7 @@ The module that costs almost nothing, entirely because `specs` already exists.
 
 ## Preconditions
 
+- Requires: `core` and `specs`.
 - `core` and `specs` installed. Without `specs` this is a different module and
   this recipe does not have it: a CLI written against a hand-maintained client
   is not cheap and does not stay in agreement with the server.

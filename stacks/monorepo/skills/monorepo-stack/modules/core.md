@@ -5,6 +5,7 @@ module that cannot be declined.
 
 ## Preconditions
 
+- Requires: nothing.
 - A git repository with no `package.json` at its root, or one that is not
   already a workspace. If a workspace file already exists, read it and stop:
   this module would rewrite the build graph of a repository that has one.

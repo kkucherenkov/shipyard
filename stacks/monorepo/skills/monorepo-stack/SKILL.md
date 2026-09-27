@@ -70,6 +70,20 @@ so and ask, rather than installing the requirement silently. Installing two
 modules when one was asked for is how a scaffold ends up holding things nobody
 chose.
 
+The column is a copy, and the module file is the original: every module opens
+its `## Preconditions` with a `- Requires:` line naming its dependencies in
+backticks, or `- Requires: nothing.` when it has none. A new module written
+into this recipe writes that line too. The validator compares the two and
+refuses a disagreement, which is the only reason the column can be trusted at
+a glance — twice it was wrong, and nothing noticed until somebody read both
+sides by hand.
+
+Only module names count, on either side. A cell may explain itself in prose
+(`ci` requires "`core`'s `lint`, `typecheck`, `test` and `build` tasks") and a
+module may go on qualifying its dependency in the bullets below the
+declaration, the way `backend` says which of its steps `specs` is for. What the
+two sides have to agree on is the set of modules, not the wording.
+
 ## Installing a module
 
 The same procedure whether this is the first module in an empty directory or

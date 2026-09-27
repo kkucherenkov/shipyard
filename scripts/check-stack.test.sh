@@ -20,6 +20,10 @@ decline_filler='Filler long enough to clear the same length floor a real decline
 # modules/sample.md. Frontmatter is fixed and valid so a case only ever
 # exercises the rule it names.
 #
+# sample.md always declares "- Requires: nothing." under ## Preconditions, to
+# match the "nothing" its table row carries: R9 compares the two and every
+# case below would otherwise fail on a rule it is not testing.
+#
 # sample.md always carries all six headings in canonical order, with an inert
 # but full-length filler under "## Declining this module" (R3 now floors that
 # section's length, same as R5 floors a Traps paragraph), and SKILL.md gets a
@@ -56,7 +60,7 @@ make_stack() {
 
 Filler.'
     fi
-    printf '## Preconditions\n\nFiller.\n\n'
+    printf '## Preconditions\n\n- Requires: nothing.\n\nFiller.\n\n'
     printf '## Steps\n\nFiller.\n\n'
     printf '## What the consumer decides\n\nFiller.\n\n'
     printf '%s\n\n' "$traps_block"
@@ -67,7 +71,9 @@ Filler.'
 
 # Build a stack whose SKILL.md declares modules $2 (space separated) and whose
 # modules/ directory contains files for $3 (space separated). The two lists
-# differ in the R4 cases and match everywhere else.
+# differ in the R4 cases and match everywhere else. Every row says "nothing"
+# under Requires and every module file declares the same, so R9 stays quiet
+# unless a case sets out to trip it.
 make_graph() {
   root=$1
   mkdir -p "$root/stacks/monorepo/skills/monorepo-stack/modules"
@@ -82,7 +88,7 @@ make_graph() {
   } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
   for m in $3; do
     {
-      printf '# %s\n\n## Preconditions\n\nNone.\n\n## Steps\n\n1. Do it.\n\n' "$m"
+      printf '# %s\n\n## Preconditions\n\n- Requires: nothing.\n\n## Steps\n\n1. Do it.\n\n' "$m"
       printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
       printf '## Declining this module\n\n%s\n\n' "$decline_filler"
       printf '## Verify\n\nIt exists.\n'
@@ -483,6 +489,105 @@ mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
 } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
 expect_root 1 'a body line starting "description:" outside the frontmatter block' \
   'does not name a triggering task'
+
+# R9: the module table's Requires cell and the module's own declaration name
+# the same modules. Two modules, because a dependency needs something to
+# depend on: `core` requires nothing, `sample`'s cell is $4 and its own
+# declaration line is $5.
+expect_requires() {
+  want=$1
+  label=$2
+  msg=$3
+  cell=$4
+  declaration=$5
+  root=$(mktemp -d)
+  mods="$root/stacks/monorepo/skills/monorepo-stack/modules"
+  mkdir -p "$mods"
+  {
+    printf -- '---\nname: monorepo-stack\n'
+    printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+    printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+    printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+    printf '| [`core`](modules/core.md) | something | nothing |\n'
+    printf '| [`sample`](modules/sample.md) | something | %s |\n' "$cell"
+  } > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+  for m in core sample; do
+    if [ "$m" = core ]; then
+      own='- Requires: nothing.'
+    else
+      own=$declaration
+    fi
+    {
+      printf '# %s\n\n## Preconditions\n\n' "$m"
+      [ -n "$own" ] && printf '%s\n\n' "$own"
+      printf '## Steps\n\n1. Do it.\n\n'
+      printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+      printf '## Declining this module\n\n%s\n\n' "$decline_filler"
+      printf '## Verify\n\nIt exists.\n'
+    } > "$mods/$m.md"
+  done
+  out=$(sh "$subject" "$root" 2>&1 >/dev/null)
+  got=$?
+  rm -rf "$root"
+  if [ "$got" -ne "$want" ]; then
+    printf 'FAIL want=%s got=%s %s\n' "$want" "$got" "$label" >&2
+    failures=$((failures + 1))
+    return
+  fi
+  if [ -n "$msg" ]; then
+    case $out in
+      *"$msg"*) ;;
+      *)
+        printf 'FAIL %s: message did not mention it: %s\n' "$label" "$out" >&2
+        failures=$((failures + 1))
+        ;;
+    esac
+  fi
+}
+
+expect_requires 0 'cell and declaration agreeing on one module passes' ''   '`core`' '- Requires: `core`.'
+
+expect_requires 0 'a cell naming non-module things alongside the module passes' ''   '`core`'"'"'s `lint` and `build` tasks' '- Requires: `core`.'
+
+expect_requires 1 'a cell that omits a declared module fails'   'Requires disagrees with the module table'   'nothing' '- Requires: `core`.'
+
+expect_requires 1 'a cell that adds a module the declaration omits fails'   'Requires disagrees with the module table'   '`core`' '- Requires: nothing.'
+
+expect_requires 1 'a module with no declaration line fails'   'carries no "- Requires:" line'   'nothing' ''
+
+expect_requires 1 'a declaration naming something that is not a module fails'   'which is not a module'   '`core`' '- Requires: `core`, `tokens`.'
+
+# The declaration is read from ## Preconditions alone. A "- Requires:" line
+# under a later heading is prose about some other module, and letting it count
+# would put the rule back where it started: reading a dependency out of a
+# sentence that was not declaring one. Built inline, because expect_requires
+# only ever writes its declaration under ## Preconditions.
+root=$(mktemp -d)
+mods="$root/stacks/monorepo/skills/monorepo-stack/modules"
+mkdir -p "$mods"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md) | something | nothing |\n'
+  printf '| [`sample`](modules/sample.md) | something | nothing |\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+{
+  printf '# core\n\n## Preconditions\n\n- Requires: nothing.\n\n## Steps\n\n1. Do it.\n\n'
+  printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+  printf '## Declining this module\n\n%s\n\n' "$decline_filler"
+  printf '## Verify\n\nIt exists.\n'
+} > "$mods/core.md"
+{
+  printf '# sample\n\n## Preconditions\n\nNothing in particular.\n\n'
+  printf '## Steps\n\n- Requires: `core`.\n\n1. Do it.\n\n'
+  printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+  printf '## Declining this module\n\n%s\n\n' "$decline_filler"
+  printf '## Verify\n\nIt exists.\n'
+} > "$mods/sample.md"
+expect_root 1 'a "- Requires:" line under ## Steps is not a declaration' \
+  'carries no "- Requires:" line'
 
 if [ "$failures" -gt 0 ]; then
   printf '%s failing case(s)\n' "$failures" >&2
