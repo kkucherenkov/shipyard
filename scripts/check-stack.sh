@@ -325,8 +325,13 @@ for skill_dir in "$stack_root"/*/skills/*/; do
     # containing "(modules/<name>.md)" is prose above the table as readily as
     # the row; on a line with no "|" awk's $(NF-1) is the whole line; and
     # matching the link anywhere on a table row lets a neighbour whose own
-    # Requires cell is written as a link steal the row. Each produced a cell
-    # that happened to agree, on a table that genuinely disagreed.
+    # Requires cell is written as a link steal the row; and matching it
+    # anywhere inside the Module cell lets a cell that names a second module
+    # in passing hand that module its row. Each produced a cell that happened
+    # to agree, on a table that genuinely disagreed. So the cell is no longer
+    # searched at all: the one (modules/X.md) in it is extracted and X must
+    # equal this module. A cell with none, or with two, matches nothing and
+    # the module is reported as having no row.
     cell=$(awk -F'|' -v n="$mname" '
       { sub(/\r$/, "") }
       !hdr && /^[[:space:]]*\|/ {
@@ -339,10 +344,19 @@ for skill_dir in "$stack_root"/*/skills/*/; do
         }
         if (m && r) { hdr = 1; modcol = m; reqcol = r; next }
       }
-      hdr && !found && /^[[:space:]]*\|/ && modcol <= NF \
-        && index($modcol, "(modules/" n ".md)") {
-        found = 1
-        if (reqcol <= NF) cell = $reqcol
+      hdr && !found && /^[[:space:]]*\|/ && modcol <= NF {
+        mc = $modcol
+        links = 0
+        linked = ""
+        while (match(mc, /\(modules\/[a-z0-9-]+\.md\)/)) {
+          links++
+          linked = substr(mc, RSTART + 9, RLENGTH - 13)
+          mc = substr(mc, RSTART + RLENGTH)
+        }
+        if (links == 1 && linked == n) {
+          found = 1
+          if (reqcol <= NF) cell = $reqcol
+        }
       }
       END {
         if (!hdr) { print "@@noheader"; exit }
@@ -355,15 +369,19 @@ for skill_dir in "$stack_root"/*/skills/*/; do
         fail "$skill_file" 'the module table has no header row naming both a Module and a Requires column'
         continue ;;
       '@@norow')
-        fail "$m" 'the module table has no row whose Module cell links this module'
+        fail "$m" 'no module-table row whose Module cell links exactly this one module'
         continue ;;
     esac
     if [ -z "$(printf '%s' "$cell" | tr -d '[:space:]')" ]; then
       fail "$m" "this module's row has an empty Requires cell"
       continue
     fi
+    # Self is dropped from the declaration side only. There, prose may mention
+    # the module's own name in passing; in a Requires cell it is a typo, and
+    # dropping it silently turned a cell reading `core` on core's own row into
+    # agreement with "- Requires: nothing."
     tabled_req=$(printf '%s' "$cell" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '\n' \
-      | grep -xF -f "$names" | grep -vxF "$mname" | sort -u)
+      | grep -xF -f "$names" | sort -u)
 
     if [ "$declared" != "$tabled_req" ]; then
       fail "$m" "Requires disagrees with the module table — module declares: $(printf '%s' "${declared:-nothing}" | tr '\n' ' '); table row says: $(printf '%s' "${tabled_req:-nothing}" | tr '\n' ' ')"
