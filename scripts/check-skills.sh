@@ -34,11 +34,15 @@ check_forbidden_nouns() {
 # passes because one of its examples begins with the word. The block counts
 # only when a closing "---" is actually found: a fence with a trailing space,
 # or one the author forgot, otherwise leaves the whole file looking like
-# frontmatter and hands the hole straight back. Rule 7 had the same
+# frontmatter and hands the hole straight back. The carriage return goes
+# first: tolerating trailing whitespace on the fence is what lets a CRLF file
+# in at all, and once inside, "name:" with no value yields "\r", which is not
+# empty and satisfies the rule that exists to reject it. Rule 7 had the same
 # hole and it was worse there: a skill with no description: still entered the
 # trigger-collision comparison, on a sentence out of its body.
 frontmatter() {
   awk '
+    { sub(/\r$/, "") }
     NR == 1 && /^---[[:space:]]*$/ { infm = 1; next }
     infm && /^---[[:space:]]*$/ { closed = 1; exit }
     infm { buf = buf $0 "\n" }

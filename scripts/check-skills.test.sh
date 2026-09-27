@@ -188,6 +188,23 @@ if [ "$got" -ne 1 ]; then
   failures=$((failures + 1))
 fi
 
+# CRLF, same reason: the fence tolerates trailing whitespace so the file gets
+# in, and then "name:" with no value is "\r", which is not empty.
+root=$(mktemp -d)
+mkdir -p "$root/skills/sample"
+{
+  printf -- '---\r\nname:\r\n'
+  printf 'description: %s\r\n' 'Use when a pull request looks green but will not merge.'
+  printf -- '---\r\n\r\n# Sample\r\n'
+} > "$root/skills/sample/SKILL.md"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s a CRLF file with an empty name: value still fails\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
 expect 1 'a dangling relative link fails' \
   'Use when a pull request looks green but will not merge.' \
   "$good_trap

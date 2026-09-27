@@ -170,6 +170,7 @@ for skill_dir in "$stack_root"/*/skills/*/; do
   # lines of awk are duplicated rather than sourced from a third file.
   if [ -f "$skill_file" ]; then
     frontmatter=$(awk '
+      { sub(/\r$/, "") }
       NR == 1 && /^---[[:space:]]*$/ { infm = 1; next }
       infm && /^---[[:space:]]*$/ { closed = 1; exit }
       infm { buf = buf $0 "\n" }
@@ -306,35 +307,63 @@ for skill_dir in "$stack_root"/*/skills/*/; do
     # Both sides are compared on whole-word module names, backticked or not.
     # Reading only backticked tokens made the rule agree with itself for the
     # wrong reason: "- Requires: core." against a cell reading "core", neither
-    # in backticks, came out as nothing == nothing and passed.
-    declared=$(printf '%s' "$req_line" | tr -c 'a-z0-9-' '\n' | grep -xF -f "$names" | sort -u)
+    # in backticks, came out as nothing == nothing and passed. Case is folded
+    # first, because tr's complement is bytewise and would otherwise turn
+    # "Core" into the token "ore" and drop it. The module's own name is
+    # dropped from both sides: it cannot depend on itself, and a declaration
+    # that mentions it in passing ("- Requires: nothing; sample stands alone")
+    # otherwise reports a dependency nobody wrote.
+    #
+    # Known limit: an escaped pipe inside a cell still splits it, because awk
+    # -F'|' does not know GFM escaping. No table here uses one.
+    declared=$(printf '%s' "$req_line" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '\n' \
+      | grep -xF -f "$names" | grep -vxF "$mname" | sort -u)
 
-    # The cell is found by the Requires column of the table header, on a row
-    # that is a table row. Matching the first line that merely contains
-    # "(modules/<name>.md)" caught prose above the table instead, and on a
-    # line with no "|" at all awk's $(NF-1) is the whole line — so a sentence
-    # naming a module produced a cell that happened to agree with the
-    # declaration, and R9 reported nothing on a table that genuinely
-    # disagreed. A row written without its trailing "|" moved the count by
-    # one and read the Provides column.
+    # The row is found by its Module cell and the value taken from its
+    # Requires cell, both columns located from the table header. Three
+    # narrower lookups were wrong before this one: the first line merely
+    # containing "(modules/<name>.md)" is prose above the table as readily as
+    # the row; on a line with no "|" awk's $(NF-1) is the whole line; and
+    # matching the link anywhere on a table row lets a neighbour whose own
+    # Requires cell is written as a link steal the row. Each produced a cell
+    # that happened to agree, on a table that genuinely disagreed.
     cell=$(awk -F'|' -v n="$mname" '
-      !col && /^[[:space:]]*\|/ {
+      { sub(/\r$/, "") }
+      !hdr && /^[[:space:]]*\|/ {
+        m = 0; r = 0
         for (i = 1; i <= NF; i++) {
           f = $i
           gsub(/^[[:space:]]+|[[:space:]]+$/, "", f)
-          if (f == "Requires") { col = i; next }
+          if (f == "Module") m = i
+          if (f == "Requires") r = i
         }
+        if (m && r) { hdr = 1; modcol = m; reqcol = r; next }
       }
-      col && /^[[:space:]]*\|/ && index($0, "(modules/" n ".md)") {
-        if (col <= NF) print $col
-        exit
+      hdr && !found && /^[[:space:]]*\|/ && modcol <= NF \
+        && index($modcol, "(modules/" n ".md)") {
+        found = 1
+        if (reqcol <= NF) cell = $reqcol
+      }
+      END {
+        if (!hdr) { print "@@noheader"; exit }
+        if (!found) { print "@@norow"; exit }
+        print cell
       }
     ' "$skill_file")
+    case $cell in
+      '@@noheader')
+        fail "$skill_file" 'the module table has no header row naming both a Module and a Requires column'
+        continue ;;
+      '@@norow')
+        fail "$m" 'the module table has no row whose Module cell links this module'
+        continue ;;
+    esac
     if [ -z "$(printf '%s' "$cell" | tr -d '[:space:]')" ]; then
-      fail "$m" 'no module-table row with a Requires cell for this module'
+      fail "$m" "this module's row has an empty Requires cell"
       continue
     fi
-    tabled_req=$(printf '%s' "$cell" | tr -c 'a-z0-9-' '\n' | grep -xF -f "$names" | sort -u)
+    tabled_req=$(printf '%s' "$cell" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '\n' \
+      | grep -xF -f "$names" | grep -vxF "$mname" | sort -u)
 
     if [ "$declared" != "$tabled_req" ]; then
       fail "$m" "Requires disagrees with the module table — module declares: $(printf '%s' "${declared:-nothing}" | tr '\n' ' '); table row says: $(printf '%s' "${tabled_req:-nothing}" | tr '\n' ' ')"
