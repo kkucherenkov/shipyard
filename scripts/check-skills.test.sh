@@ -107,6 +107,69 @@ if [ "$got" -ne 1 ]; then
   failures=$((failures + 1))
 fi
 
+# Rules 1, 2 and 7 read the frontmatter block, not the whole file. Each of
+# these three fixtures omits a frontmatter key and puts a line of the same
+# shape in the body, which is what a skill documenting frontmatter looks like.
+# Reading the whole file, the body line stands in for the key that was never
+# written.
+
+root=$(mktemp -d)
+mkdir -p "$root/skills/sample"
+{
+  printf -- '---\n'
+  printf 'description: %s\n' 'Use when a pull request looks green but will not merge.'
+  printf -- '---\n\n'
+  printf '# Sample\n\nEvery skill opens with a block like this one:\n\n'
+  printf '```\n---\nname: the-skill-you-are-writing\n---\n```\n\n%s\n' "$good_trap"
+} > "$root/skills/sample/SKILL.md"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s a body line reading "name:" does not satisfy the missing frontmatter name\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
+root=$(mktemp -d)
+mkdir -p "$root/skills/sample"
+{
+  printf -- '---\n'
+  printf 'name: sample\n'
+  printf -- '---\n\n'
+  printf '# Sample\n\ndescription: Use when a release needs cutting.\n\n%s\n' "$good_trap"
+} > "$root/skills/sample/SKILL.md"
+sh "$subject" "$root" >/dev/null 2>&1
+got=$?
+rm -rf "$root"
+if [ "$got" -ne 1 ]; then
+  printf 'FAIL want=1 got=%s a body line reading "description:" does not satisfy the missing trigger phrase\n' "$got" >&2
+  failures=$((failures + 1))
+fi
+
+# Rule 7 specifically: two skills with no frontmatter description must fail on
+# rule 2 and must not additionally be reported as claiming the same trigger.
+# Reading the whole file gave both of them a trigger out of their bodies and
+# then accused them of colliding on it.
+root=$(mktemp -d)
+for skill_name in alpha beta; do
+  mkdir -p "$root/skills/$skill_name"
+  {
+    printf -- '---\n'
+    printf 'name: %s\n' "$skill_name"
+    printf -- '---\n\n'
+    printf '# %s\n\ndescription: Use when a pull request looks green but will not merge.\n\n%s\n' \
+      "$skill_name" "$good_trap"
+  } > "$root/skills/$skill_name/SKILL.md"
+done
+out=$(sh "$subject" "$root" 2>&1 >/dev/null)
+rm -rf "$root"
+case $out in
+  *'same trigger'*)
+    printf 'FAIL two description-less skills were accused of sharing a trigger read from their bodies: %s\n' "$out" >&2
+    failures=$((failures + 1))
+    ;;
+esac
+
 expect 1 'a dangling relative link fails' \
   'Use when a pull request looks green but will not merge.' \
   "$good_trap
