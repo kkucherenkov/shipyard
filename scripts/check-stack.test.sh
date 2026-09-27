@@ -598,6 +598,63 @@ expect_requires 1 'a row with no trailing pipe is still read at its Requires col
 expect_requires 0 'a row with no trailing pipe passes when the two sides agree' '' \
   '`core`' '- Requires: `core`.' '' no-pipe
 
+# Capitalisation in a cell must not delete the name. tr's complement is
+# bytewise, so "Core" split into the token "ore" and stopped being a module.
+expect_requires 1 'a capitalised module name in the cell still counts' \
+  'Requires disagrees with the module table' \
+  'Core' '- Requires: nothing.'
+
+# A module cannot depend on itself, and a declaration that mentions its own
+# name in passing reported a dependency nobody wrote.
+expect_requires 0 'a declaration naming its own module in prose is not a dependency' '' \
+  '`core`' '- Requires: `core`; sample stands alone otherwise.'
+
+# A row is found by its Module cell, not by the link appearing anywhere on it.
+# `core`'s row below carries a link to sample inside its own Requires cell,
+# and matching the first table row containing "(modules/sample.md)" handed
+# sample that cell: it reads as `core`, which is what sample declares, so the
+# two agreed while sample's real row said nothing. Both rows here are
+# internally consistent except sample's, so a pass is a pass for one reason.
+root=$(mktemp -d)
+mods="$root/stacks/monorepo/skills/monorepo-stack/modules"
+mkdir -p "$mods"
+{
+  printf -- '---\nname: monorepo-stack\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\n'
+  printf -- '---\n\n# Monorepo stack\n\n## The modules\n\n'
+  printf '| Module | Provides | Requires |\n| --- | --- | --- |\n'
+  printf '| [`core`](modules/core.md) | something | [`core`](modules/sample.md) |\n'
+  printf '| [`sample`](modules/sample.md) | something | nothing |\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+# Both declare the same pair, which is what the stolen cell reads as: the
+# thief's cell is a link, so the module name in its path joins the set. Under
+# the old lookup sample was handed that cell and agreed with it; under the new
+# one sample reads its own row, which says nothing, and the two disagree.
+for mod in core sample; do
+  {
+    printf '# %s\n\n## Preconditions\n\n- Requires: `core`, `sample`.\n\n' "$mod"
+    printf '## Steps\n\n1. Do it.\n\n'
+    printf '## What the consumer decides\n\nNames.\n\n## Traps\n\nNone yet.\n\n'
+    printf '## Declining this module\n\n%s\n\n' "$decline_filler"
+    printf '## Verify\n\nIt exists.\n'
+  } > "$mods/$mod.md"
+done
+expect_root 1 'a link in a neighbour Requires cell does not steal that row' \
+  'sample.md'
+
+# A CRLF file must not slip past the frontmatter rules. Tolerating trailing
+# whitespace on the fence is what lets one in, and once inside, "name:" with
+# no value yields "\r", which is not empty.
+root=$(mktemp -d)
+mkdir -p "$root/stacks/monorepo/skills/monorepo-stack"
+{
+  printf -- '---\r\nname:\r\n'
+  printf 'description: Use when scaffolding a monorepo or adding a module.\r\n'
+  printf -- '---\r\n\r\n# Monorepo stack\r\n'
+} > "$root/stacks/monorepo/skills/monorepo-stack/SKILL.md"
+expect_root 1 'a CRLF file with an empty name: value still fails' \
+  'frontmatter is missing a non-empty name'
+
 # The declaration is read from ## Preconditions alone. A "- Requires:" line
 # under a later heading is prose about some other module, and letting it count
 # would put the rule back where it started: reading a dependency out of a
