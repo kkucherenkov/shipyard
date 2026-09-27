@@ -5,6 +5,7 @@ turns it into code.
 
 ## Preconditions
 
+- Requires: `core`.
 - `core` installed: the workspace globs, the build graph, and the base
   TypeScript config.
 - No existing `packages/specs`. If one exists, read its `openapi.yaml` and

@@ -258,6 +258,71 @@ for skill_dir in "$stack_root"/*/skills/*/; do
     rm -f "$t" "$p"
     fail "$skill_dir" "module table and modules/ disagree — tabled only: ${only_tabled:-none}; present only: ${only_present:-none}"
   fi
+
+  # R9. The table's Requires column and the module's own declaration name the
+  # same modules. Requires is the only machine-readable record of an
+  # inter-module dependency in the whole recipe, and until this rule existed no
+  # rule read it: R4 above extracts the (modules/<name>.md) link out of a row
+  # and stops, so a row could claim one dependency set while the module's own
+  # ## Preconditions claimed another and both gates stayed green. Two rows were
+  # wrong that way when this was written, and one of them let the table permit
+  # a combination the module could not serve.
+  #
+  # Prose cannot be diffed against prose: a module's Preconditions legitimately
+  # mention a module they do not depend on (a database "from `docker` or from
+  # wherever this project runs one"), so a rule reading the whole section
+  # reports a dependency that is not one. The module therefore declares its
+  # set on one line and the prose bullets below go on explaining it. The
+  # declaration is strict — every backticked token on it must be a real module
+  # — while the table cell stays prose and only its module names are read, so a
+  # cell may say "`core`'s `lint`, `typecheck`, `test` and `build` tasks"
+  # without those four becoming dependencies.
+  names=$(mktemp)
+  [ -n "$present" ] && printf '%s\n' "$present" > "$names"
+  for m in "$skill_dir"/modules/*.md; do
+    [ -e "$m" ] || continue
+    mname=$(basename "$m" .md)
+
+    req_line=$(awk '
+      /^## Preconditions/ { inside = 1; next }
+      /^## / { inside = 0 }
+      inside && /^- Requires:/ { print; exit }
+    ' "$m")
+    if [ -z "$req_line" ]; then
+      fail "$m" '## Preconditions carries no "- Requires:" line to check the table against'
+      continue
+    fi
+
+    # Strict side: a backticked token here that is not a module is a typo in
+    # the one place a typo would otherwise read as "depends on nothing".
+    declared=''
+    for tok in $(printf '%s' "$req_line" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
+      if grep -qxF "$tok" "$names"; then
+        declared="$declared$tok
+"
+      else
+        fail "$m" "\"- Requires:\" names \`$tok\`, which is not a module"
+      fi
+    done
+    declared=$(printf '%s' "$declared" | sort -u)
+
+    # Prose side: the row's Requires cell is the last populated field, since a
+    # trailing "|" leaves an empty one after it.
+    cell=$(awk -F'|' -v n="$mname" '
+      index($0, "(modules/" n ".md)") { print $(NF - 1); exit }
+    ' "$skill_file")
+    tabled_req=''
+    for tok in $(printf '%s' "$cell" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
+      grep -qxF "$tok" "$names" && tabled_req="$tabled_req$tok
+"
+    done
+    tabled_req=$(printf '%s' "$tabled_req" | sort -u)
+
+    if [ "$declared" != "$tabled_req" ]; then
+      fail "$m" "Requires disagrees with the module table — module declares: $(printf '%s' "${declared:-nothing}" | tr '\n' ' '); table row says: $(printf '%s' "${tabled_req:-nothing}" | tr '\n' ' ')"
+    fi
+  done
+  rm -f "$names"
 done
 
 # R6. No pnpm script the recipe never tells anyone to create. The failure this

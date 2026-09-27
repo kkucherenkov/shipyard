@@ -8,6 +8,7 @@ writes.
 
 ## Preconditions
 
+- Requires: nothing.
 - No `docker/compose.yml` already present. If there is one, read it: this
   module adds services to it rather than replacing it.
 - A container runtime with Compose support on the machine.
