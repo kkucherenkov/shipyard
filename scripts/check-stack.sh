@@ -170,9 +170,10 @@ for skill_dir in "$stack_root"/*/skills/*/; do
   # lines of awk are duplicated rather than sourced from a third file.
   if [ -f "$skill_file" ]; then
     frontmatter=$(awk '
-      NR == 1 && /^---$/ { infm = 1; next }
-      infm && /^---$/ { exit }
-      infm { print }
+      NR == 1 && /^---[[:space:]]*$/ { infm = 1; next }
+      infm && /^---[[:space:]]*$/ { closed = 1; exit }
+      infm { buf = buf $0 "\n" }
+      END { if (closed) printf "%s", buf }
     ' "$skill_file")
     name_val=$(printf '%s\n' "$frontmatter" | sed -n 's/^name: *//p' | head -1)
     [ -n "$name_val" ] || fail "$skill_file" 'frontmatter is missing a non-empty name:'
@@ -293,30 +294,47 @@ for skill_dir in "$stack_root"/*/skills/*/; do
       continue
     fi
 
-    # Strict side: a backticked token here that is not a module is a typo in
-    # the one place a typo would otherwise read as "depends on nothing".
-    declared=''
+    # A backticked token on the declaration line that is not a module is a
+    # typo in the one place a typo would otherwise read as "depends on
+    # nothing". Checked separately from the comparison below, which does not
+    # look at backticks at all.
     for tok in $(printf '%s' "$req_line" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
-      if grep -qxF "$tok" "$names"; then
-        declared="$declared$tok
-"
-      else
-        fail "$m" "\"- Requires:\" names \`$tok\`, which is not a module"
-      fi
+      grep -qxF "$tok" "$names" \
+        || fail "$m" "\"- Requires:\" names \`$tok\`, which is not a module"
     done
-    declared=$(printf '%s' "$declared" | sort -u)
 
-    # Prose side: the row's Requires cell is the last populated field, since a
-    # trailing "|" leaves an empty one after it.
+    # Both sides are compared on whole-word module names, backticked or not.
+    # Reading only backticked tokens made the rule agree with itself for the
+    # wrong reason: "- Requires: core." against a cell reading "core", neither
+    # in backticks, came out as nothing == nothing and passed.
+    declared=$(printf '%s' "$req_line" | tr -c 'a-z0-9-' '\n' | grep -xF -f "$names" | sort -u)
+
+    # The cell is found by the Requires column of the table header, on a row
+    # that is a table row. Matching the first line that merely contains
+    # "(modules/<name>.md)" caught prose above the table instead, and on a
+    # line with no "|" at all awk's $(NF-1) is the whole line — so a sentence
+    # naming a module produced a cell that happened to agree with the
+    # declaration, and R9 reported nothing on a table that genuinely
+    # disagreed. A row written without its trailing "|" moved the count by
+    # one and read the Provides column.
     cell=$(awk -F'|' -v n="$mname" '
-      index($0, "(modules/" n ".md)") { print $(NF - 1); exit }
+      !col && /^[[:space:]]*\|/ {
+        for (i = 1; i <= NF; i++) {
+          f = $i
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", f)
+          if (f == "Requires") { col = i; next }
+        }
+      }
+      col && /^[[:space:]]*\|/ && index($0, "(modules/" n ".md)") {
+        if (col <= NF) print $col
+        exit
+      }
     ' "$skill_file")
-    tabled_req=''
-    for tok in $(printf '%s' "$cell" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
-      grep -qxF "$tok" "$names" && tabled_req="$tabled_req$tok
-"
-    done
-    tabled_req=$(printf '%s' "$tabled_req" | sort -u)
+    if [ -z "$(printf '%s' "$cell" | tr -d '[:space:]')" ]; then
+      fail "$m" 'no module-table row with a Requires cell for this module'
+      continue
+    fi
+    tabled_req=$(printf '%s' "$cell" | tr -c 'a-z0-9-' '\n' | grep -xF -f "$names" | sort -u)
 
     if [ "$declared" != "$tabled_req" ]; then
       fail "$m" "Requires disagrees with the module table — module declares: $(printf '%s' "${declared:-nothing}" | tr '\n' ' '); table row says: $(printf '%s' "${tabled_req:-nothing}" | tr '\n' ' ')"

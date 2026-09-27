@@ -49,7 +49,7 @@ A module's name — the table's first column, and the `<name>` in
 | [`specs`](modules/specs.md) | An OpenAPI contract, its linter, and a typed client generated from it and shipped as built output | `core` |
 | [`backend`](modules/backend.md) | An HTTP server validated against the contract at runtime, its schema, its write ordering and its authentication | `core` (and `specs`, for the runtime validator) |
 | [`cli`](modules/cli.md) | A command-line client consuming the generated client, with a local store and an outbox | `core` and `specs` |
-| [`ci`](modules/ci.md) | Gates matched to the modules the project installed, each a separately named check | `core`'s `lint`, `typecheck`, `test` and `build` tasks |
+| [`ci`](modules/ci.md) | Gates matched to the modules the project installed, each a separately named check | `core`, for the four task definitions every gate runs |
 
 Four more modules belong in this table and are not written: a browser client, a
 component package, a design-token pipeline, and a mobile client. They are absent
@@ -70,19 +70,20 @@ so and ask, rather than installing the requirement silently. Installing two
 modules when one was asked for is how a scaffold ends up holding things nobody
 chose.
 
-The column is a copy, and the module file is the original: every module opens
-its `## Preconditions` with a `- Requires:` line naming its dependencies in
-backticks, or `- Requires: nothing.` when it has none. A new module written
-into this recipe writes that line too. The validator compares the two and
-refuses a disagreement, which is the only reason the column can be trusted at
-a glance — twice it was wrong, and nothing noticed until somebody read both
-sides by hand.
+The column is a copy, and the module file is the original: every module
+carries a `- Requires:` line under its `## Preconditions`, naming its
+dependencies, or `- Requires: nothing.` when it has none. Put it first, where
+a reader looks. A new module written into this recipe writes that line too.
+The validator compares the two and refuses a disagreement, which is the only
+reason the column can be trusted at a glance — twice it was wrong, and nothing
+noticed until somebody read both sides by hand.
 
-Only module names count, on either side. A cell may explain itself in prose
-(`ci` requires "`core`'s `lint`, `typecheck`, `test` and `build` tasks") and a
-module may go on qualifying its dependency in the bullets below the
-declaration, the way `backend` says which of its steps `specs` is for. What the
-two sides have to agree on is the set of modules, not the wording.
+What the two sides have to agree on is the set of modules, not the wording.
+Each side is read for whole-word module names, so a cell may explain itself in
+prose and a module may go on qualifying its dependency in the bullets below
+the declaration, the way `backend` says which of its steps `specs` is for.
+Write the names in backticks; a backticked name on a `- Requires:` line that
+is not a module is rejected as the typo it is.
 
 ## Installing a module
 
