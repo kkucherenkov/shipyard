@@ -160,13 +160,14 @@ for skill_dir in "$stack_root"/*/skills/*/; do
   # drag its forbidden-technology-noun rule onto a file whose entire job is
   # naming the technologies a recipe installs.
   #
-  # Extracted from the frontmatter block only (the first line through the
-  # next "---"), not the whole file the way layer 1's check-skills.sh does
-  # it. That shortcut is a deferred Minor there, where the file is prose
-  # about process; here a module file's own examples are expected to contain
-  # a body line reading "name: <module-name>" or "description: ...", and a
-  # skill with no name: in its frontmatter at all must not pass because one
-  # of its examples happens to start with the same word.
+  # Extracted from the frontmatter block only, the first line through the
+  # next "---". This file's own examples are expected to contain a body line
+  # reading "name: <module-name>" or "description: ...", so a skill with no
+  # name: in its frontmatter at all must not pass because one of its examples
+  # happens to start with the same word. check-skills.sh reads its keys the
+  # same way, out of a shared frontmatter() helper; the two scripts stay
+  # separate because their rule sets are disjoint by design, so the five
+  # lines of awk are duplicated rather than sourced from a third file.
   if [ -f "$skill_file" ]; then
     frontmatter=$(awk '
       NR == 1 && /^---$/ { infm = 1; next }

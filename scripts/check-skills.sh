@@ -27,6 +27,21 @@ check_forbidden_nouns() {
   fi
 }
 
+# Shared by rules 1, 2 and 7: the frontmatter block alone, the first line
+# through the next "---". Reading a key out of the whole file instead lets a
+# body line that happens to start "name: " or "description: " stand in for a
+# frontmatter key the skill never wrote — so a skill with no name: at all
+# passes because one of its examples begins with the word. Rule 7 had the same
+# hole and it was worse there: a skill with no description: still entered the
+# trigger-collision comparison, on a sentence out of its body.
+frontmatter() {
+  awk '
+    NR == 1 && /^---$/ { infm = 1; next }
+    infm && /^---$/ { exit }
+    infm { print }
+  ' "$1"
+}
+
 # Shared by skills and commands: every relative link must resolve. $1 is the
 # file to read links from, $2 is its directory, $3 is the label to fail
 # under. Matches into a variable rather than piping into `while`, so `fail`
@@ -55,12 +70,13 @@ for skill in "$root"/skills/*/SKILL.md; do
   dir=$(dirname "$skill")
 
   # 1. Frontmatter must carry a non-empty name.
-  name_val=$(sed -n 's/^name: *//p' "$skill" | head -1)
+  fm=$(frontmatter "$skill")
+  name_val=$(printf '%s\n' "$fm" | sed -n 's/^name: *//p' | head -1)
   if [ -z "$name_val" ]; then
     fail "$skill" 'frontmatter is missing a non-empty name:'
   fi
 
-  desc=$(sed -n 's/^description: *//p' "$skill" | head -1)
+  desc=$(printf '%s\n' "$fm" | sed -n 's/^description: *//p' | head -1)
 
   # 2. The description must name a task, not the contents.
   if ! printf '%s' "$desc" | grep -qiE 'use (when|before|after|while)'; then
@@ -117,7 +133,7 @@ done
 trigger_hits=$(
   for f in "$root"/skills/*/SKILL.md; do
     [ -e "$f" ] || continue
-    trig=$(sed -n 's/^description: *//p' "$f" | head -1 | tr 'A-Z' 'a-z' \
+    trig=$(frontmatter "$f" | sed -n 's/^description: *//p' | head -1 | tr 'A-Z' 'a-z' \
       | grep -oE 'use (when|before|after|while)[^.,;]*' | head -1)
     [ -n "$trig" ] && printf '%s\t%s\n' "$trig" "$f"
   done
